@@ -42,12 +42,15 @@ export async function executeTool(
       error: result.successful ? null : errorMsg || 'Tool execution failed',
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error('[composio/execute]', slug, message)
+    // Log full detail server-side; return a short message only (no stacks to clients)
+    console.error('[composio/execute]', slug, err)
+    const message = err instanceof Error ? err.message : 'Tool execution failed'
+    const short =
+      message.length > 280 ? `${message.slice(0, 277)}…` : message.split('\n')[0]
     return {
       successful: false,
       data: null,
-      error: message,
+      error: short || 'Tool execution failed',
     }
   }
 }

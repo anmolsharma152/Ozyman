@@ -1,13 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/app/lib/auth'
-import { ensureProfile } from '@/lib/profile/ensureProfile'
-import {
-  isComposioConfigured,
-  isMvpToolkit,
-  persistEntityId,
-  resolveEntityId,
-  startToolkitLink,
-} from '@/lib/composio'
+import { isComposioConfigured, isMvpToolkit, linkToolkitForUser } from '@/lib/composio'
 
 type RouteContext = {
   params: Promise<{ toolkit: string }>
@@ -15,7 +8,7 @@ type RouteContext = {
 
 /**
  * POST /api/connections/[toolkit]/link
- * Starts Composio OAuth / connect-link for the user's entity.
+ * Thin HTTP wrapper over linkToolkitForUser (shared with server actions).
  * Returns a redirect URL only — never the API key.
  */
 export async function POST(_request: Request, context: RouteContext) {
@@ -41,39 +34,25 @@ export async function POST(_request: Request, context: RouteContext) {
     )
   }
 
-  const profile = await ensureProfile(user)
-  const { entityId, source } = resolveEntityId(profile, user.id)
+  const result = await linkToolkitForUser(user, toolkit)
 
-  // Persist entity so subsequent tool calls use the same identity
-  await persistEntityId(user.id, entityId, {
-    force: source === 'user_id' || source === 'env_default',
-  })
-
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
-    'http://localhost:3000'
-  const callbackUrl = `${appUrl}/connections?linked=${toolkit}`
-
-  const result = await startToolkitLink(entityId, toolkit, callbackUrl)
-
-  if (result.error && !result.redirectUrl) {
+  if (!result.ok || !result.redirectUrl) {
     return NextResponse.json(
       {
-        error: result.error,
-        entityId,
+        error: result.error || 'Could not start link',
+        entityId: result.entityId,
         toolkit,
-        /** CLI fallback instructions for the UI */
-        cliHint: `composio link ${toolkit}`,
+        cliHint: result.cliHint || `composio link ${toolkit}`,
       },
-      { status: 502 },
+      { status: result.error?.includes('not configured') ? 503 : 502 },
     )
   }
 
   return NextResponse.json({
     toolkit,
-    entityId,
+    entityId: result.entityId,
     redirectUrl: result.redirectUrl,
-    connectionId: result.connectionId,
-    cliHint: `composio link ${toolkit}`,
+    connectionId: result.connectionId ?? null,
+    cliHint: result.cliHint,
   })
 }

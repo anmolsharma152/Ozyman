@@ -1,16 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/app/lib/auth'
-import { ensureProfile } from '@/lib/profile/ensureProfile'
-import {
-  fetchLiveConnectionStatus,
-  isComposioConfigured,
-  mirrorConnections,
-  resolveEntityId,
-} from '@/lib/composio'
+import { getConnectionsSnapshot, isComposioConfigured } from '@/lib/composio'
 
 /**
  * GET /api/connections/status
- * Live Composio connection status for Gmail/GitHub/Slack + optional DB mirror.
+ * Thin HTTP wrapper over getConnectionsSnapshot.
  * Never returns COMPOSIO_API_KEY.
  */
 export async function GET() {
@@ -32,17 +26,6 @@ export async function GET() {
     )
   }
 
-  const profile = await ensureProfile(user)
-  const { entityId, source } = resolveEntityId(profile, user.id)
-
-  const connections = await fetchLiveConnectionStatus(entityId)
-  // Best-effort mirror; soft-fails if migration not applied
-  void mirrorConnections(user.id, connections)
-
-  return NextResponse.json({
-    configured: true,
-    entityId,
-    entitySource: source,
-    connections,
-  })
+  const snapshot = await getConnectionsSnapshot(user)
+  return NextResponse.json(snapshot)
 }

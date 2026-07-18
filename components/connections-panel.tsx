@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import {
   linkToolkitAction,
+  loadConnectionsData,
   verifyGithubAction,
   type ConnectionsPageData,
 } from '@/app/connections/actions'
@@ -13,8 +14,16 @@ import type { ConnectionStatus, ToolkitConnection } from '@/lib/composio/types'
  * Talks only to server actions / APIs — never receives COMPOSIO_API_KEY.
  */
 
+type LinkedNotice = {
+  toolkit: string | null
+  label: string | null
+  oauthStatus: 'success' | 'failed' | null
+} | null
+
 type Props = {
   initial: ConnectionsPageData
+  /** Set when returning from Composio OAuth (?linked= / ?status=) */
+  linkedNotice?: LinkedNotice
 }
 
 const STATUS_STYLES: Record<
@@ -45,13 +54,55 @@ const TOOLKIT_EMOJI: Record<string, string> = {
   slack: '💬',
 }
 
-export function ConnectionsPanel({ initial }: Props) {
+export function ConnectionsPanel({ initial, linkedNotice = null }: Props) {
   const [data, setData] = useState(initial)
   const [message, setMessage] = useState<string | null>(null)
   const [messageKind, setMessageKind] = useState<'ok' | 'err'>('ok')
   const [pendingToolkit, setPendingToolkit] = useState<string | null>(null)
   const [smokePending, setSmokePending] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const linkedHandled = useRef(false)
+
+  // After OAuth return: toast + re-fetch status (SSR already loaded fresh;
+  // client refresh picks up any delayed ACTIVE state).
+  useEffect(() => {
+    if (!linkedNotice || linkedHandled.current) return
+    linkedHandled.current = true
+
+    const name = linkedNotice.label || linkedNotice.toolkit || 'App'
+    if (linkedNotice.oauthStatus === 'failed') {
+      setMessageKind('err')
+      setMessage(
+        `${name} link did not complete. Try Link again, or use the CLI hint below.`,
+      )
+    } else {
+      setMessageKind('ok')
+      setMessage(
+        linkedNotice.toolkit
+          ? `${name} link finished — refreshing status. Run Verify GitHub if you linked GitHub.`
+          : 'Link finished — refreshing connection status.',
+      )
+    }
+
+    // Strip query params so a refresh does not re-toast
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (url.searchParams.has('linked') || url.searchParams.has('status')) {
+        url.searchParams.delete('linked')
+        url.searchParams.delete('status')
+        window.history.replaceState({}, '', url.pathname + url.search)
+      }
+    }
+
+    startTransition(async () => {
+      try {
+        const fresh = await loadConnectionsData()
+        setData(fresh)
+      } catch {
+        // keep SSR snapshot
+      }
+    })
+  }, [linkedNotice])
 
   const needsRelink = useMemo(() => {
     if (!data.configured) return true

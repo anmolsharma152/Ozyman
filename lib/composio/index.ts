@@ -7,7 +7,7 @@ import 'server-only'
 
 export {
   getComposioClient,
-  getComposioApiKey,
+  // getComposioApiKey intentionally NOT re-exported — keep secret surface minimal
   isComposioConfigured,
 } from './client'
 export {
@@ -23,6 +23,16 @@ export {
   mapComposioStatus,
   isMvpToolkit,
 } from './connections'
+export {
+  getConnectionsSnapshot,
+  linkToolkitForUser,
+  runGithubSmokeForUser,
+  publicErrorMessage,
+  toolkitLabel,
+  type ConnectionsSnapshot,
+  type LinkOpResult,
+  type SmokeOpResult,
+} from './ops'
 export {
   MVP_TOOLKITS,
   TOOLKIT_LABELS,
