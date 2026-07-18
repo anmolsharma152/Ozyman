@@ -37,7 +37,7 @@ npx @insforge/cli db migrations new <kebab-name>
 ```
 
 PR-02 core tables: `profiles`, `threads`, `messages` (+ RLS, grants, `updated_at` triggers).  
-On first authenticated layout load, `lib/profile/ensureProfile.ts` upserts the operator profile and seeds:
+On first authenticated layout load, `lib/profile/ensureProfile.ts` inserts a profile if missing, then fills null seed fields (race-safe select → insert → re-select → conditional update):
 
 - `digest_email` from the session/OAuth email when the column is null
 - `composio_entity_id` from `COMPOSIO_DEFAULT_ENTITY_ID` when set and the column is null

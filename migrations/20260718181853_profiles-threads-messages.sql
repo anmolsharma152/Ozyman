@@ -114,18 +114,34 @@ CREATE INDEX messages_user_id_idx ON public.messages (user_id);
 
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
+-- Dual-parent guard: messages.user_id must match caller AND thread must be owned
+-- by the same user so clients cannot attach rows to another user's thread_id.
 CREATE POLICY "owners select messages" ON public.messages
   FOR SELECT TO authenticated
   USING (user_id = (SELECT auth.uid()));
 
 CREATE POLICY "owners insert messages" ON public.messages
   FOR INSERT TO authenticated
-  WITH CHECK (user_id = (SELECT auth.uid()));
+  WITH CHECK (
+    user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.threads t
+      WHERE t.id = thread_id
+        AND t.user_id = (SELECT auth.uid())
+    )
+  );
 
 CREATE POLICY "owners update messages" ON public.messages
   FOR UPDATE TO authenticated
   USING (user_id = (SELECT auth.uid()))
-  WITH CHECK (user_id = (SELECT auth.uid()));
+  WITH CHECK (
+    user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.threads t
+      WHERE t.id = thread_id
+        AND t.user_id = (SELECT auth.uid())
+    )
+  );
 
 CREATE POLICY "owners delete messages" ON public.messages
   FOR DELETE TO authenticated

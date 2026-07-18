@@ -23,6 +23,8 @@ export type Profile = {
   updated_at: string
 }
 
+type ProfileClient = Awaited<ReturnType<typeof createInsForgeServerClient>>
+
 const PROFILE_SELECT =
   'id, display_name, timezone, brief_cron_local, brief_email_enabled, digest_email, composio_entity_id, settings, created_at, updated_at'
 
@@ -33,6 +35,62 @@ function defaultSettings(): ProfileSettings {
   }
 }
 
+type SeedInputs = {
+  sessionEmail: string | null
+  displayName: string | null
+  defaultEntity: string | null
+}
+
+/**
+ * Build a patch that only fills null seed fields (never overwrites user edits).
+ */
+function buildNullSeedPatch(
+  profile: Profile,
+  seeds: SeedInputs,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {}
+  if (!profile.digest_email && seeds.sessionEmail) {
+    patch.digest_email = seeds.sessionEmail
+  }
+  if (!profile.composio_entity_id && seeds.defaultEntity) {
+    patch.composio_entity_id = seeds.defaultEntity
+  }
+  if (!profile.display_name && seeds.displayName) {
+    patch.display_name = seeds.displayName
+  }
+  return patch
+}
+
+/**
+ * Apply null-seed patch when present; otherwise return profile unchanged.
+ * Used for both the existing-row path and concurrent-insert race re-select.
+ */
+async function maybeSeedNulls(
+  client: ProfileClient,
+  userId: string,
+  profile: Profile,
+  seeds: SeedInputs,
+): Promise<Profile> {
+  const patch = buildNullSeedPatch(profile, seeds)
+  if (Object.keys(patch).length === 0) {
+    return profile
+  }
+
+  const { data: updated, error: updateError } = await client.database
+    .from('profiles')
+    .update(patch)
+    .eq('id', userId)
+    .select(PROFILE_SELECT)
+    .single()
+
+  if (updateError) {
+    console.error('[ensureProfile] update failed', updateError)
+    return profile
+  }
+
+  return updated ? normalizeProfile(updated) : profile
+}
+
 /**
  * First-login (and every authenticated load) profile bootstrap.
  *
@@ -41,16 +99,18 @@ function defaultSettings(): ProfileSettings {
  * - Seeds composio_entity_id from COMPOSIO_DEFAULT_ENTITY_ID when set and column is null.
  * - Soft-fails (returns null) if tables are missing or RLS/network errors so the shell still renders.
  *
+ * Pattern: select → insert-if-missing (race-safe re-select) → fill null seed fields.
  * Wrapped in React cache() so layout + page share one call per request.
  */
 export const ensureProfile = cache(
   async (user: SessionUser): Promise<Profile | null> => {
     try {
       const client = await createInsForgeServerClient()
-      const sessionEmail = user.email?.trim() || null
-      const displayName = user.name?.trim() || null
-      const defaultEntity =
-        process.env.COMPOSIO_DEFAULT_ENTITY_ID?.trim() || null
+      const seeds: SeedInputs = {
+        sessionEmail: user.email?.trim() || null,
+        displayName: user.name?.trim() || null,
+        defaultEntity: process.env.COMPOSIO_DEFAULT_ENTITY_ID?.trim() || null,
+      }
 
       const { data: existing, error: selectError } = await client.database
         .from('profiles')
@@ -69,9 +129,9 @@ export const ensureProfile = cache(
           .insert([
             {
               id: user.id,
-              display_name: displayName,
-              digest_email: sessionEmail,
-              composio_entity_id: defaultEntity,
+              display_name: seeds.displayName,
+              digest_email: seeds.sessionEmail,
+              composio_entity_id: seeds.defaultEntity,
               settings: defaultSettings(),
             },
           ])
@@ -79,7 +139,7 @@ export const ensureProfile = cache(
           .single()
 
         if (insertError) {
-          // Race: concurrent first load may insert first — re-select
+          // Race: concurrent first load may insert first — re-select then seed nulls
           const { data: raced, error: raceError } = await client.database
             .from('profiles')
             .select(PROFILE_SELECT)
@@ -90,43 +150,18 @@ export const ensureProfile = cache(
             console.error('[ensureProfile] insert failed', insertError)
             return null
           }
-          return normalizeProfile(raced)
+          return maybeSeedNulls(
+            client,
+            user.id,
+            normalizeProfile(raced),
+            seeds,
+          )
         }
 
         return inserted ? normalizeProfile(inserted) : null
       }
 
-      const profile = normalizeProfile(existing)
-      const patch: Record<string, unknown> = {}
-
-      // Never overwrite a user-edited digest_email with null / a different value
-      if (!profile.digest_email && sessionEmail) {
-        patch.digest_email = sessionEmail
-      }
-      if (!profile.composio_entity_id && defaultEntity) {
-        patch.composio_entity_id = defaultEntity
-      }
-      if (!profile.display_name && displayName) {
-        patch.display_name = displayName
-      }
-
-      if (Object.keys(patch).length === 0) {
-        return profile
-      }
-
-      const { data: updated, error: updateError } = await client.database
-        .from('profiles')
-        .update(patch)
-        .eq('id', user.id)
-        .select(PROFILE_SELECT)
-        .single()
-
-      if (updateError) {
-        console.error('[ensureProfile] update failed', updateError)
-        return profile
-      }
-
-      return updated ? normalizeProfile(updated) : profile
+      return maybeSeedNulls(client, user.id, normalizeProfile(existing), seeds)
     } catch (err) {
       console.error('[ensureProfile] unexpected error', err)
       return null
