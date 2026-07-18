@@ -24,6 +24,11 @@
 node_modules
 .next
 dist
+out
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
 
 # OS
 .DS_Store

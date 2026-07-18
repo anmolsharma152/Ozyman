@@ -10,15 +10,29 @@ Personal Operator OS — a private career + life operator buddy on **InsForge** 
 | **Setup / secrets** | [docs/setup.md](./docs/setup.md) |
 | **Env template** | [`.env.example`](./.env.example) |
 
-## Quick start (bootstrap)
+## Quick start
 
 ```bash
 cp .env.example .env.local
-# Fill secrets — never commit .env.local
+# Set NEXT_PUBLIC_INSFORGE_ANON_KEY (and other secrets as needed)
 # See docs/setup.md for Resend-first digests, Composio entity seed, ai setup
+
+npm install
+npm run dev
 ```
 
-App runtime (Next.js scaffold, schema, agent loop) lands in later PRs. This repo currently holds design + env/docs bootstrap only.
+Open [http://localhost:3000](http://localhost:3000). Sign in with **Google OAuth** (preferred) or email/password if configured on the InsForge project.
+
+### Scripts
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Local Next.js dev server |
+| `npm run build` | Production build |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm start` | Serve production build |
+
+Schema, agent loop, Composio, and morning brief land in later PRs.
 
 ## Do not commit
 
