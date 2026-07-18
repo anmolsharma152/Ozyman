@@ -1,6 +1,7 @@
-
-# InsForge & AI agent skills
+# InsForge project credentials & CLI state (never commit)
 .insforge
+
+# AI agent skill / config dirs
 .agent
 .agents
 .augment
@@ -13,10 +14,17 @@
 .roo
 .trae
 .windsurf
+
+# Secrets & local env (never commit real keys)
 .env
 .env.local
 .env*.local
+!.env.example
+
+# Dependencies & build output
 node_modules
 .next
-.DS_Store
 dist
+
+# OS
+.DS_Store
