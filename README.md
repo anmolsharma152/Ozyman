@@ -45,33 +45,25 @@ npx @insforge/cli db migrations new <name>
 
 # One-shot import of a raw SQL file (if not using the migrations tracker)
 npx @insforge/cli db import migrations/20260718181853_profiles-threads-messages.sql
-npx @insforge/cli db import migrations/20260718182601_tasks.sql
+npx @insforge/cli db import migrations/20260718182641_connections.sql
 ```
-
-| Migration | Tables |
-|-----------|--------|
-| `20260718181853_profiles-threads-messages.sql` | profiles, threads, messages |
-| `20260718182601_tasks.sql` | tasks (statuses: proposed \| todo \| doing \| done \| cancelled) |
 
 Requires a linked project (`.insforge/project.json` via `npx @insforge/cli link`).  
-`ensureProfile` runs on every authenticated layout load and seeds `profiles.digest_email` / `composio_entity_id` when null.  
-Tasks UI: [`/tasks`](./app/tasks) — open/proposed list, create, mark done (server actions).
+`ensureProfile` runs on every authenticated layout load and seeds `profiles.digest_email` / `composio_entity_id` when null.
 
-### Agent core + policy (PR-03)
+### Composio connections (PR-05)
 
-| Path | Purpose |
-|------|---------|
-| `migrations/20260718210000_agent-runs-tool-runs-artifacts.sql` | `agent_runs`, `tool_runs`, `artifacts`, `tool_runs_public` |
-| `packages/ozyman-policy` | Tool allowlist + `MorningBriefPayload` (Deno copies later) |
-| `lib/agent/` | Next interactive loop primitives (OpenRouter chat, policy, tool_runs log) |
-| `scripts/create-artifacts-bucket.sh` | Create private `artifacts` storage bucket |
+| | |
+|--|--|
+| **UI** | [`/connections`](./app/connections) — Gmail / GitHub / Slack status, re-link, Verify GitHub smoke |
+| **Server client** | [`lib/composio/*`](./lib/composio) — `COMPOSIO_API_KEY` only (never `NEXT_PUBLIC_*`) |
+| **Entity** | `profiles.composio_entity_id` ← seed `COMPOSIO_DEFAULT_ENTITY_ID` or user id (KD 17) |
+| **APIs** | `GET /api/connections/status`, `POST /api/connections/[toolkit]/link`, `POST /api/connections/smoke` |
+| **Mirror** | `public.connections` — toolkit status only (no provider tokens) |
 
-```bash
-npx @insforge/cli db migrations up --all
-bash scripts/create-artifacts-bucket.sh
-```
+Smoke: `GITHUB_GET_THE_AUTHENTICATED_USER`. On failure the UI forces re-link (supported path).
 
-Composio connections UI (PR-05), companion chat SSE (PR-06), confirms (PR-07), and Deno morning brief (PR-08) build on this.
+Agent loop, morning brief, and chat land in later PRs.
 
 ## Do not commit
 

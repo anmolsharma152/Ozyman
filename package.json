@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@composio/core": "^0.14.0",
     "@insforge/sdk": "^1.4.5",
     "@ozyman/policy": "file:packages/ozyman-policy",
     "next": "^15.3.5",

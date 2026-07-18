@@ -27,10 +27,10 @@ export function Shell({ user, children }: ShellProps) {
           {user ? (
             <>
               <Link
-                href="/tasks"
+                href="/connections"
                 className="btn-ghost min-h-11 px-3 text-shell-muted"
               >
-                Tasks
+                Apps
               </Link>
               <form action={signOut}>
                 <button
