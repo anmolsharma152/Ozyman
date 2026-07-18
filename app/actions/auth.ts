@@ -4,26 +4,44 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createAuthActions } from '@insforge/sdk/ssr'
 
+/**
+ * Public app origin for OAuth redirectTo.
+ * Production requires NEXT_PUBLIC_APP_URL so the provider never bounces to localhost.
+ */
 function appOrigin(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
-    'http://localhost:3000'
-  )
+  const raw = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
+  if (raw) return raw
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'NEXT_PUBLIC_APP_URL is required in production for OAuth redirects',
+    )
+  }
+
+  return 'http://localhost:3000'
 }
 
 /** Start Google OAuth; stores PKCE verifier and redirects to provider. */
 export async function signInWithGoogle() {
+  let origin: string
+  try {
+    origin = appOrigin()
+  } catch (err) {
+    console.error('OAuth misconfigured', err)
+    redirect('/login?error=misconfigured')
+  }
+
   const cookieStore = await cookies()
   const auth = createAuthActions({ cookies: cookieStore })
   const { data, error } = await auth.signInWithOAuth('google', {
-    redirectTo: new URL('/api/auth/callback', appOrigin()).toString(),
+    redirectTo: new URL('/api/auth/callback', origin).toString(),
     skipBrowserRedirect: true,
   })
 
   if (error || !data?.url || !data?.codeVerifier) {
-    redirect(
-      `/login?error=${encodeURIComponent(error?.message ?? 'oauth_init_failed')}`,
-    )
+    // Opaque code only — never put provider messages in the query string.
+    console.error('OAuth init failed', error?.message ?? 'missing url/codeVerifier')
+    redirect('/login?error=oauth_init_failed')
   }
 
   cookieStore.set('insforge_code_verifier', data.codeVerifier, {

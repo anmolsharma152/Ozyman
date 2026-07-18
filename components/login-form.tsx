@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import { signInWithGoogle, signInWithPassword } from '@/app/actions/auth'
 
 const ERROR_COPY: Record<string, string> = {
@@ -8,16 +8,27 @@ const ERROR_COPY: Record<string, string> = {
   missing_verifier: 'OAuth session expired. Start sign-in again.',
   exchange_failed: 'Couldn’t finish Google sign-in. Try once more.',
   oauth_init_failed: 'Couldn’t start Google sign-in. Check InsForge OAuth config.',
+  misconfigured: 'App URL isn’t configured. Set NEXT_PUBLIC_APP_URL and try again.',
 }
+
+const FALLBACK_ERROR = 'Something went wrong signing in. Try again?'
 
 type LoginFormProps = {
   errorCode?: string | null
 }
 
 export function LoginForm({ errorCode }: LoginFormProps) {
-  const [state, formAction, pending] = useActionState(signInWithPassword, null)
+  const [state, formAction, passwordPending] = useActionState(
+    signInWithPassword,
+    null,
+  )
+  // Sticky until navigation — blocks double-submit of Google OAuth init.
+  const [oauthPending, setOauthPending] = useState(false)
+  const busy = passwordPending || oauthPending
+
+  // Only known opaque codes — never surface raw provider messages from the query string.
   const banner =
-    (errorCode && (ERROR_COPY[errorCode] || decodeURIComponent(errorCode))) ||
+    (errorCode && (ERROR_COPY[errorCode] ?? FALLBACK_ERROR)) ||
     state?.error ||
     null
 
@@ -39,10 +50,15 @@ export function LoginForm({ errorCode }: LoginFormProps) {
         </div>
       ) : null}
 
-      <form action={signInWithGoogle}>
-        <button type="submit" className="btn-primary">
+      <form
+        action={signInWithGoogle}
+        onSubmit={() => {
+          setOauthPending(true)
+        }}
+      >
+        <button type="submit" className="btn-primary" disabled={busy}>
           <GoogleIcon />
-          Continue with Google
+          {oauthPending ? 'Redirecting to Google…' : 'Continue with Google'}
         </button>
       </form>
 
@@ -62,7 +78,8 @@ export function LoginForm({ errorCode }: LoginFormProps) {
             type="email"
             autoComplete="email"
             required
-            className="min-h-12 w-full rounded-2xl border border-shell-border bg-shell-surface px-4 text-base text-shell-fg outline-none ring-shell-accent/40 placeholder:text-shell-muted/60 focus:ring-2"
+            disabled={busy}
+            className="min-h-12 w-full rounded-2xl border border-shell-border bg-shell-surface px-4 text-base text-shell-fg outline-none ring-shell-accent/40 placeholder:text-shell-muted/60 focus:ring-2 disabled:opacity-60"
             placeholder="you@example.com"
           />
         </label>
@@ -73,12 +90,13 @@ export function LoginForm({ errorCode }: LoginFormProps) {
             type="password"
             autoComplete="current-password"
             required
-            className="min-h-12 w-full rounded-2xl border border-shell-border bg-shell-surface px-4 text-base text-shell-fg outline-none ring-shell-accent/40 placeholder:text-shell-muted/60 focus:ring-2"
+            disabled={busy}
+            className="min-h-12 w-full rounded-2xl border border-shell-border bg-shell-surface px-4 text-base text-shell-fg outline-none ring-shell-accent/40 placeholder:text-shell-muted/60 focus:ring-2 disabled:opacity-60"
             placeholder="••••••••"
           />
         </label>
-        <button type="submit" className="btn-ghost w-full" disabled={pending}>
-          {pending ? 'Signing in…' : 'Sign in with email'}
+        <button type="submit" className="btn-ghost w-full" disabled={busy}>
+          {passwordPending ? 'Signing in…' : 'Sign in with email'}
         </button>
       </form>
     </div>

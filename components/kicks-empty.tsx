@@ -10,7 +10,7 @@ export function KicksEmpty() {
             Today&apos;s Top 3 Kicks
           </h2>
           <p className="mt-1 text-sm text-shell-muted">
-            Today&apos;s kicks appear after your first morning brief.
+            Kicks appear after your first morning brief.
           </p>
         </div>
         <span

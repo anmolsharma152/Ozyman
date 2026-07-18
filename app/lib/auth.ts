@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { createInsForgeServerClient } from '@/app/lib/insforge/server'
 
 export type SessionUser = {
@@ -6,8 +7,11 @@ export type SessionUser = {
   name?: string | null
 }
 
-/** Best-effort current user for Server Components. Null when signed out. */
-export async function getSessionUser(): Promise<SessionUser | null> {
+/**
+ * Best-effort current user for Server Components. Null when signed out.
+ * Wrapped in React cache() so layout + page share one getCurrentUser() call per request.
+ */
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   try {
     const client = await createInsForgeServerClient()
     const { data, error } = await client.auth.getCurrentUser()
@@ -30,4 +34,4 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   } catch {
     return null
   }
-}
+})

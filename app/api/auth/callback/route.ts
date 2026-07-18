@@ -44,6 +44,13 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  response.cookies.delete('insforge_code_verifier')
+  // Mirror set options from signInWithGoogle (path: '/') so the cookie clears.
+  response.cookies.set('insforge_code_verifier', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  })
   return response
 }

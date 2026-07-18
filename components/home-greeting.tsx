@@ -1,9 +1,17 @@
 import Link from 'next/link'
 import type { SessionUser } from '@/app/lib/auth'
 
-function timeGreeting(): string {
-  // IST-ish default for personal OS; fine for placeholder until profiles.timezone
-  const hour = new Date().getHours()
+/** Default operator timezone until profiles.timezone exists (PR-10). */
+const DEFAULT_TZ = 'Asia/Kolkata'
+
+function timeGreeting(timeZone = DEFAULT_TZ): string {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone,
+    }).format(new Date()),
+  )
   if (hour < 12) return 'Morning'
   if (hour < 17) return 'Afternoon'
   return 'Evening'
@@ -14,6 +22,7 @@ type HomeGreetingProps = {
 }
 
 export function HomeGreeting({ user }: HomeGreetingProps) {
+  const greeting = timeGreeting()
   const displayName =
     user?.name?.split(' ')[0] ||
     user?.email?.split('@')[0] ||
@@ -22,12 +31,12 @@ export function HomeGreeting({ user }: HomeGreetingProps) {
   return (
     <section className="space-y-2 pt-2">
       <p className="text-sm font-medium uppercase tracking-wider text-shell-accent">
-        {user ? timeGreeting() : 'Hey'}
+        {user ? greeting : 'Hey'}
       </p>
       <h1 className="text-3xl font-semibold tracking-tight text-shell-fg sm:text-4xl">
         {user ? (
           <>
-            {timeGreeting()}.
+            {greeting}.
             {displayName ? (
               <>
                 {' '}
