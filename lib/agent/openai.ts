@@ -6,6 +6,8 @@
  *   new OpenAI({ apiKey: OPENROUTER_API_KEY, baseURL: 'https://openrouter.ai/api/v1' })
  */
 
+import 'server-only'
+
 import OpenAI from 'openai'
 import type {
   ChatCompletionMessageParam,

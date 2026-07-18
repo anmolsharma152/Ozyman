@@ -1,7 +1,10 @@
 /**
  * Next interactive agent core (Node only).
  * Re-exports types, policy, OpenRouter chat, and the tool loop.
+ * Do not import from Client Components or Deno edge functions.
  */
+
+import 'server-only'
 
 export * from './types'
 export * from './policy'

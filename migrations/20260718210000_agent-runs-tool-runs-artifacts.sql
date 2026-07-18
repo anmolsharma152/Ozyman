@@ -85,13 +85,57 @@ CREATE POLICY "owners delete agent_runs" ON public.agent_runs
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.agent_runs TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- messages.agent_run_id (deferred from PR-02)
+-- messages.agent_run_id (deferred from PR-02) + dual-parent ownership
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.messages
   ADD COLUMN agent_run_id UUID REFERENCES public.agent_runs(id) ON DELETE SET NULL;
 
 CREATE INDEX messages_agent_run_id_idx ON public.messages (agent_run_id)
   WHERE agent_run_id IS NOT NULL;
+
+-- Extend INSERT/UPDATE WITH CHECK so agent_run_id (when set) must be owned
+-- by the caller — same dual-parent pattern as tool_runs / artifacts.
+DROP POLICY IF EXISTS "owners insert messages" ON public.messages;
+DROP POLICY IF EXISTS "owners update messages" ON public.messages;
+
+CREATE POLICY "owners insert messages" ON public.messages
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.threads t
+      WHERE t.id = thread_id
+        AND t.user_id = (SELECT auth.uid())
+    )
+    AND (
+      agent_run_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM public.agent_runs ar
+        WHERE ar.id = agent_run_id
+          AND ar.user_id = (SELECT auth.uid())
+      )
+    )
+  );
+
+CREATE POLICY "owners update messages" ON public.messages
+  FOR UPDATE TO authenticated
+  USING (user_id = (SELECT auth.uid()))
+  WITH CHECK (
+    user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.threads t
+      WHERE t.id = thread_id
+        AND t.user_id = (SELECT auth.uid())
+    )
+    AND (
+      agent_run_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM public.agent_runs ar
+        WHERE ar.id = agent_run_id
+          AND ar.user_id = (SELECT auth.uid())
+      )
+    )
+  );
 
 -- ---------------------------------------------------------------------------
 -- tool_runs
@@ -292,36 +336,46 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.artifacts TO authenticated;
 -- ---------------------------------------------------------------------------
 -- Storage RLS: path-scoped `artifacts` bucket ({user_id}/...)
 -- Bucket itself is created out-of-band (see docs/setup.md + scripts/create-artifacts-bucket.sh).
--- Policies are bucket-specific so they coexist with any default owner-only policies.
+--
+-- AS RESTRICTIVE: ANDs with any platform default owner-only (PERMISSIVE) policies.
+-- Without RESTRICTIVE, defaults alone allow INSERT under any path when
+-- uploaded_by = self, so an attacker could plant objects under another user's
+-- folder prefix and path-SELECT would expose them.
+-- Predicate is (bucket <> 'artifacts' OR path_ok) so non-artifacts buckets
+-- are unaffected by these policies.
 -- ---------------------------------------------------------------------------
 CREATE POLICY artifacts_bucket_path_select ON storage.objects
+  AS RESTRICTIVE
   FOR SELECT TO authenticated
   USING (
-    bucket = 'artifacts'
-    AND (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
+    bucket <> 'artifacts'
+    OR (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
   );
 
 CREATE POLICY artifacts_bucket_path_insert ON storage.objects
+  AS RESTRICTIVE
   FOR INSERT TO authenticated
   WITH CHECK (
-    bucket = 'artifacts'
-    AND (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
+    bucket <> 'artifacts'
+    OR (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
   );
 
 CREATE POLICY artifacts_bucket_path_update ON storage.objects
+  AS RESTRICTIVE
   FOR UPDATE TO authenticated
   USING (
-    bucket = 'artifacts'
-    AND (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
+    bucket <> 'artifacts'
+    OR (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
   )
   WITH CHECK (
-    bucket = 'artifacts'
-    AND (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
+    bucket <> 'artifacts'
+    OR (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
   );
 
 CREATE POLICY artifacts_bucket_path_delete ON storage.objects
+  AS RESTRICTIVE
   FOR DELETE TO authenticated
   USING (
-    bucket = 'artifacts'
-    AND (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
+    bucket <> 'artifacts'
+    OR (storage.foldername(key))[1] = (SELECT auth.jwt() ->> 'sub')
   );

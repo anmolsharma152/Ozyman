@@ -11,6 +11,8 @@
  * - maxSteps default 12, hard max 20
  */
 
+import 'server-only'
+
 import { resolve } from './policy'
 import { completeChat, DEFAULT_BUDDY_SYSTEM_PROMPT, getDefaultChatModel } from './openai'
 import {

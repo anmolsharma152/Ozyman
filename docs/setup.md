@@ -68,7 +68,7 @@ bash scripts/create-artifacts-bucket.sh
 # or: npx @insforge/cli storage create-bucket artifacts --private
 ```
 
-Migration `20260718210000_agent-runs-tool-runs-artifacts.sql` installs path RLS on `storage.objects` for `bucket = 'artifacts'` (`storage.foldername(key)[1] = auth.jwt()->>'sub'`). Always persist both `storage_url` and `storage_key` on `public.artifacts`.
+Migration `20260718210000_agent-runs-tool-runs-artifacts.sql` installs **RESTRICTIVE** path RLS on `storage.objects` for `bucket = 'artifacts'` (`storage.foldername(key)[1] = auth.jwt()->>'sub'`). RESTRICTIVE ANDs with any default owner-only policies so uploads cannot plant objects under another user’s path prefix. Always persist both `storage_url` and `storage_key` on `public.artifacts`.
 
 ### Policy package + Next agent core
 
