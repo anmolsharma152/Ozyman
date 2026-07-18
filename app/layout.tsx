@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { Shell } from '@/components/shell'
 import { getSessionUser } from '@/app/lib/auth'
+import { ensureProfile } from '@/lib/profile/ensureProfile'
 
 export const metadata: Metadata = {
   title: 'Ozyman',
@@ -21,6 +22,11 @@ export default async function RootLayout({
   children: React.ReactNode
 }>) {
   const user = await getSessionUser()
+
+  // First-login bootstrap: seed digest_email + composio_entity_id when null
+  if (user) {
+    await ensureProfile(user)
+  }
 
   return (
     <html lang="en">

@@ -21,6 +21,31 @@ This doc is the **PR-00 bootstrap checklist**: env vars, secrets placement, Rese
 
 ---
 
+## Database migrations
+
+Schema SQL is versioned under [`migrations/`](../migrations/) for the InsForge CLI:
+
+```bash
+# List applied remote migrations
+npx @insforge/cli db migrations list
+
+# Apply all pending local migrations
+npx @insforge/cli db migrations up --all
+
+# Create the next migration file
+npx @insforge/cli db migrations new <kebab-name>
+```
+
+PR-02 core tables: `profiles`, `threads`, `messages` (+ RLS, grants, `updated_at` triggers).  
+On first authenticated layout load, `lib/profile/ensureProfile.ts` upserts the operator profile and seeds:
+
+- `digest_email` from the session/OAuth email when the column is null
+- `composio_entity_id` from `COMPOSIO_DEFAULT_ENTITY_ID` when set and the column is null
+
+Prefer migrations over ad-hoc `db query` for schema. `npx @insforge/cli db import <file.sql>` is available for one-shot SQL import if needed.
+
+---
+
 ## Never commit
 
 - Real secrets or API keys

@@ -32,7 +32,25 @@ Open [http://localhost:3000](http://localhost:3000). Sign in with **Google OAuth
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm start` | Serve production build |
 
-Schema, agent loop, Composio, and morning brief land in later PRs.
+### Database migrations
+
+SQL lives under [`migrations/`](./migrations/) (InsForge CLI format: `<timestamp>_<kebab-name>.sql`).
+
+```bash
+# Preferred: apply pending migrations on the linked project
+npx @insforge/cli db migrations up --all
+
+# Or create a new empty migration file
+npx @insforge/cli db migrations new <name>
+
+# One-shot import of a raw SQL file (if not using the migrations tracker)
+npx @insforge/cli db import migrations/20260718181853_profiles-threads-messages.sql
+```
+
+Requires a linked project (`.insforge/project.json` via `npx @insforge/cli link`).  
+`ensureProfile` runs on every authenticated layout load and seeds `profiles.digest_email` / `composio_entity_id` when null.
+
+Agent loop, Composio connections UI, and morning brief land in later PRs.
 
 ## Do not commit
 
