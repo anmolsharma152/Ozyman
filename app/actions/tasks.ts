@@ -6,7 +6,9 @@ import { createInsForgeServerClient } from '@/app/lib/insforge/server'
 import { ensureProfile } from '@/lib/profile/ensureProfile'
 import {
   OPEN_TASK_STATUSES,
+  TASK_NOTES_MAX,
   TASK_SELECT,
+  TASK_TITLE_MAX,
   normalizeTask,
   type Task,
   type TaskStatus,
@@ -83,8 +85,17 @@ export async function createTask(
   if (!title) {
     return { ok: false, error: 'Give it a short title — even one word works.' }
   }
-  if (title.length > 280) {
-    return { ok: false, error: 'Title is a bit long — keep it under 280 characters.' }
+  if (title.length > TASK_TITLE_MAX) {
+    return {
+      ok: false,
+      error: `Title is a bit long — keep it under ${TASK_TITLE_MAX} characters.`,
+    }
+  }
+  if (notesRaw.length > TASK_NOTES_MAX) {
+    return {
+      ok: false,
+      error: `Notes are a bit long — keep them under ${TASK_NOTES_MAX} characters.`,
+    }
   }
 
   try {
@@ -121,24 +132,34 @@ export async function createTask(
   }
 }
 
-/** Mark a task done (celebration path — soft win). Form-action void return. */
-export async function markTaskDone(formData: FormData): Promise<void> {
-  await updateTaskStatus(formData, 'done')
+/** Mark a task done (celebration path — soft win). Open statuses only. */
+export async function markTaskDone(
+  _prev: TaskActionResult | null,
+  formData: FormData,
+): Promise<TaskActionResult> {
+  return updateTaskStatus(formData, 'done', [...OPEN_TASK_STATUSES])
 }
 
-/** Accept a proposed task into the open todo queue. Form-action void return. */
-export async function acceptProposedTask(formData: FormData): Promise<void> {
-  await updateTaskStatus(formData, 'todo')
+/** Accept a proposed task into the open todo queue. Only from `proposed`. */
+export async function acceptProposedTask(
+  _prev: TaskActionResult | null,
+  formData: FormData,
+): Promise<TaskActionResult> {
+  return updateTaskStatus(formData, 'todo', ['proposed'])
 }
 
-/** Soft-cancel (preferred over hard delete). Form-action void return. */
-export async function cancelTask(formData: FormData): Promise<void> {
-  await updateTaskStatus(formData, 'cancelled')
+/** Soft-cancel (preferred over hard delete). Open statuses only. */
+export async function cancelTask(
+  _prev: TaskActionResult | null,
+  formData: FormData,
+): Promise<TaskActionResult> {
+  return updateTaskStatus(formData, 'cancelled', [...OPEN_TASK_STATUSES])
 }
 
 async function updateTaskStatus(
   formData: FormData,
   status: TaskStatus,
+  fromStatuses: readonly TaskStatus[],
 ): Promise<TaskActionResult> {
   const gate = await requireUserWithProfile()
   if (gate.error || !gate.user) {
@@ -152,20 +173,30 @@ async function updateTaskStatus(
 
   try {
     const client = await createInsForgeServerClient()
-    const { data, error } = await client.database
+    let query = client.database
       .from('tasks')
       .update({ status })
       .eq('id', taskId)
       .eq('user_id', gate.user.id)
-      .select(TASK_SELECT)
-      .maybeSingle()
+
+    if (fromStatuses.length === 1) {
+      query = query.eq('status', fromStatuses[0])
+    } else {
+      query = query.in('status', [...fromStatuses])
+    }
+
+    const { data, error } = await query.select(TASK_SELECT).maybeSingle()
 
     if (error) {
       console.error('[tasks] updateTaskStatus failed', error)
       return { ok: false, error: 'Could not update that task. Try again?' }
     }
     if (!data) {
-      return { ok: false, error: 'Task not found (or already gone).' }
+      // Silent no-op when status guard misses (already done/cancelled or wrong transition)
+      return {
+        ok: false,
+        error: "That task is already closed or can't take this action.",
+      }
     }
 
     revalidatePath('/tasks')

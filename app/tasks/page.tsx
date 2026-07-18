@@ -4,6 +4,7 @@ import { listOpenTasks } from '@/app/actions/tasks'
 import { getSessionUser } from '@/app/lib/auth'
 import { TaskCreateForm } from '@/components/task-create-form'
 import { TasksList } from '@/components/tasks-list'
+import { ensureProfile } from '@/lib/profile/ensureProfile'
 
 export const metadata = {
   title: 'Tasks · Ozyman',
@@ -16,7 +17,10 @@ export default async function TasksPage() {
     redirect('/login')
   }
 
+  // Cached with layout + listOpenTasks ensureProfile call in the same request
+  const profile = await ensureProfile(user)
   const tasks = await listOpenTasks()
+  const timeZone = profile?.timezone || 'Asia/Kolkata'
 
   return (
     <div className="flex flex-1 flex-col gap-5">
@@ -39,7 +43,7 @@ export default async function TasksPage() {
       </section>
 
       <TaskCreateForm />
-      <TasksList tasks={tasks} />
+      <TasksList tasks={tasks} timeZone={timeZone} />
     </div>
   )
 }

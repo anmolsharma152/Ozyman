@@ -1,5 +1,15 @@
-/** Open statuses shown on the ADHD-friendly tasks list. */
+/**
+ * Open statuses shown on the ADHD-friendly tasks list.
+ * Includes `doing` for schema/list readiness; MVP UI has no "Start → doing"
+ * affordance (intentionally not a kanban board).
+ */
 export const OPEN_TASK_STATUSES = ['proposed', 'todo', 'doing'] as const
+
+/** Server-side notes cap (mirrors create-form maxLength). */
+export const TASK_NOTES_MAX = 2000
+
+/** Server-side title cap (mirrors create-form maxLength). */
+export const TASK_TITLE_MAX = 280
 
 export const TASK_STATUSES = [
   'proposed',
