@@ -22,5 +22,5 @@ App runtime (Next.js scaffold, schema, agent loop) lands in later PRs. This repo
 
 ## Do not commit
 
-- `.env`, `.env.local`, real API keys
+- Any `.env*` file except `.env.example` (real API keys stay in `.env.local` / InsForge secrets)
 - `.insforge/` (CLI / project credentials)

@@ -16,9 +16,8 @@
 .windsurf
 
 # Secrets & local env (never commit real keys)
-.env
-.env.local
-.env*.local
+# Covers .env, .env.local, .env.development, .env.production, .env.test, etc.
+.env*
 !.env.example
 
 # Dependencies & build output

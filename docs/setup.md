@@ -24,7 +24,7 @@ This doc is the **PR-00 bootstrap checklist**: env vars, secrets placement, Rese
 ## Never commit
 
 - Real secrets or API keys
-- `.env`, `.env.local`, `.env*.local`
+- Any `.env*` file except the tracked template (`.env.example` is allowed; `.env`, `.env.local`, `.env.development`, `.env.production`, etc. are ignored)
 - `.insforge/` (contains project keys / CLI state)
 - Any file with live `COMPOSIO_API_KEY`, `RESEND_API_KEY`, `CRON_SECRET`, admin keys, etc.
 
@@ -33,6 +33,7 @@ Copy the template and fill locally:
 ```bash
 cp .env.example .env.local
 # edit .env.local — do not commit
+# Prefer .env.local for secrets; never put real keys in committed files
 ```
 
 ---
@@ -54,6 +55,7 @@ cp .env.example .env.local
 - Recipient comes from `profiles.digest_email` (seeded at first login from session email) — **not** a runtime `auth.users` lookup in the brief.
 - If recipient is missing, skip email and still succeed on in-app brief.
 - Switch to `insforge` only when paid email is available; then use display-name `from` + user-controlled `replyTo`.
+- Digest HTML deep links need a public app origin on the **edge** runtime (`APP_URL` — same value as Next `NEXT_PUBLIC_APP_URL`). Deno does not inherit Next `NEXT_PUBLIC_*` unless also set as an InsForge secret.
 
 ### Composio entity seed
 
@@ -82,10 +84,11 @@ npx @insforge/cli ai setup
 |----------|-------|----------|---------|
 | `NEXT_PUBLIC_INSFORGE_URL` | Next public | yes | API base |
 | `NEXT_PUBLIC_INSFORGE_ANON_KEY` | Next public | yes | Anon / publishable key |
-| `NEXT_PUBLIC_APP_URL` | Next public | yes | OAuth redirects, email deep links |
+| `NEXT_PUBLIC_APP_URL` | Next public | yes | OAuth redirects, email deep links (browser / Next) |
+| `APP_URL` | edge | yes for digests | Public app origin for digest HTML deep links (same value as `NEXT_PUBLIC_APP_URL`; Deno does not get Next `NEXT_PUBLIC_*` automatically) |
 | `INSFORGE_URL` | server/edge | cron/admin | Admin client base URL |
 | `INSFORGE_API_KEY` | server/edge | cron/admin | Admin client key |
-| `OPENROUTER_API_KEY` | server/edge | yes for AI | From `ai setup` or local override |
+| `OPENROUTER_API_KEY` | server/edge | yes for AI (or InsForge AI gateway via `ai setup`) | Direct OpenRouter key when not using project gateway |
 | `OPENROUTER_CHAT_MODEL` | server | optional | default `openai/gpt-4.1-mini` |
 | `OPENROUTER_EMBEDDING_MODEL` | server | later | e.g. `openai/text-embedding-3-small` |
 | `COMPOSIO_API_KEY` | server/edge | yes | Tool execute |
@@ -95,9 +98,9 @@ npx @insforge/cli ai setup
 | `DIGEST_EMAIL_PROVIDER` | edge | yes | `resend` \| `insforge` |
 | `RESEND_API_KEY` | edge | if resend | Digest send |
 | `DIGEST_FROM_EMAIL` | edge | if resend | Verified Resend from address |
-| `TOOL_ARGS_ENCRYPTION_KEY` | server | recommended | Encrypt `args_execute` at rest |
+| `TOOL_ARGS_ENCRYPTION_KEY` | server (+ edge if brief encrypts `args_execute`) | recommended | Encrypt `args_execute` at rest; Next confirm path today — add to edge secrets if morning-brief writes encrypted tool args |
 
-Full design appendix mirrors this table: design doc § Appendix A.
+Full design appendix mirrors most of this table: design doc § Appendix A. `APP_URL` is the edge-facing name for digest deep links (design uses `appUrl` / `NEXT_PUBLIC_APP_URL` in Appendix C).
 
 ---
 
@@ -114,7 +117,9 @@ Full design appendix mirrors this table: design doc § Appendix A.
 | `COMPOSIO_DEFAULT_ENTITY_ID` | yes | Seed only |
 | `OPENROUTER_API_KEY` | if direct OpenRouter | Prefer InsForge AI gateway |
 | `OPENROUTER_CHAT_MODEL` | optional | |
-| `TOOL_ARGS_ENCRYPTION_KEY` | recommended | |
+| `TOOL_ARGS_ENCRYPTION_KEY` | recommended | Next confirm path; see edge note if brief encrypts args |
+
+Digest/cron/admin keys (`DIGEST_EMAIL_PROVIDER`, `RESEND_API_KEY`, `DIGEST_FROM_EMAIL`, `CRON_SECRET`, `MORNING_BRIEF_USER_ID`, `INSFORGE_URL`, `INSFORGE_API_KEY`, `APP_URL`) live in **InsForge secrets** (below). Leave them empty in `.env.local` unless you run brief logic locally.
 
 ### InsForge project secrets (edge / schedules)
 
@@ -128,12 +133,14 @@ npx @insforge/cli secrets add KEY VALUE
 | `INSFORGE_URL` | admin client in edge | Same API base |
 | `INSFORGE_API_KEY` | admin client in edge | Server-only |
 | `MORNING_BRIEF_USER_ID` | brief pipeline | Sole operator UUID |
+| `APP_URL` | digest HTML deep links | Same origin as `NEXT_PUBLIC_APP_URL` (e.g. production site URL); used by Deno brief for `/brief/{id}` links |
 | `COMPOSIO_API_KEY` | tools from Deno | Same as local server key |
 | `COMPOSIO_DEFAULT_ENTITY_ID` | seed (if used on edge) | Best-effort |
 | `DIGEST_EMAIL_PROVIDER` | digests | default `resend` |
 | `RESEND_API_KEY` | digests when resend | |
 | `DIGEST_FROM_EMAIL` | digests when resend | Verified sender |
-| `OPENROUTER_API_KEY` / AI gateway | summarize step | Via `ai setup` where possible |
+| `OPENROUTER_API_KEY` / AI gateway | summarize step | Via `ai setup` where possible; or set key if edge calls OpenRouter directly |
+| `TOOL_ARGS_ENCRYPTION_KEY` | if brief encrypts `args_execute` | Same key as Next if morning-brief writes encrypted tool-run args; otherwise Next confirm path only |
 
 ### Generate a strong cron secret
 
@@ -152,7 +159,7 @@ openssl rand -hex 32
 4. Create Resend account + verified sender → set `RESEND_API_KEY`, `DIGEST_FROM_EMAIL`, `DIGEST_EMAIL_PROVIDER=resend`.
 5. Copy Composio project API key → `COMPOSIO_API_KEY`; note CLI consumer entity → `COMPOSIO_DEFAULT_ENTITY_ID`.
 6. Generate `CRON_SECRET`; set `MORNING_BRIEF_USER_ID` after first auth user exists (PR-01+).
-7. Add the same keys to InsForge secrets for edge functions (PR-08 brief).
+7. Add keys to InsForge secrets for edge functions (PR-08 brief), including **`APP_URL`** (production app origin for digest deep links), digest/Resend vars, cron, admin, and Composio.
 8. Scaffold Next app + SSR auth (PR-01) using `.env.local` from this template.
 
 ---
