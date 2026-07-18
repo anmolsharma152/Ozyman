@@ -25,11 +25,22 @@ export function Shell({ user, children }: ShellProps) {
 
         <nav className="flex items-center gap-2">
           {user ? (
-            <form action={signOut}>
-              <button type="submit" className="btn-ghost min-h-11 px-3 text-shell-muted">
-                Sign out
-              </button>
-            </form>
+            <>
+              <Link
+                href="/tasks"
+                className="btn-ghost min-h-11 px-3 text-shell-muted"
+              >
+                Tasks
+              </Link>
+              <form action={signOut}>
+                <button
+                  type="submit"
+                  className="btn-ghost min-h-11 px-3 text-shell-muted"
+                >
+                  Sign out
+                </button>
+              </form>
+            </>
           ) : (
             <Link href="/login" className="btn-ghost min-h-11 px-3">
               Sign in

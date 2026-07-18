@@ -45,10 +45,17 @@ npx @insforge/cli db migrations new <name>
 
 # One-shot import of a raw SQL file (if not using the migrations tracker)
 npx @insforge/cli db import migrations/20260718181853_profiles-threads-messages.sql
+npx @insforge/cli db import migrations/20260718182601_tasks.sql
 ```
 
+| Migration | Tables |
+|-----------|--------|
+| `20260718181853_profiles-threads-messages.sql` | profiles, threads, messages |
+| `20260718182601_tasks.sql` | tasks (statuses: proposed \| todo \| doing \| done \| cancelled) |
+
 Requires a linked project (`.insforge/project.json` via `npx @insforge/cli link`).  
-`ensureProfile` runs on every authenticated layout load and seeds `profiles.digest_email` / `composio_entity_id` when null.
+`ensureProfile` runs on every authenticated layout load and seeds `profiles.digest_email` / `composio_entity_id` when null.  
+Tasks UI: [`/tasks`](./app/tasks) — open/proposed list, create, mark done (server actions).
 
 ### Agent core + policy (PR-03)
 
