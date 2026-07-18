@@ -27,6 +27,12 @@ export function Shell({ user, children }: ShellProps) {
           {user ? (
             <>
               <Link
+                href="/tasks"
+                className="btn-ghost min-h-11 px-3 text-shell-muted"
+              >
+                Tasks
+              </Link>
+              <Link
                 href="/connections"
                 className="btn-ghost min-h-11 px-3 text-shell-muted"
               >
