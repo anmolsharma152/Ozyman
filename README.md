@@ -50,7 +50,21 @@ npx @insforge/cli db import migrations/20260718181853_profiles-threads-messages.
 Requires a linked project (`.insforge/project.json` via `npx @insforge/cli link`).  
 `ensureProfile` runs on every authenticated layout load and seeds `profiles.digest_email` / `composio_entity_id` when null.
 
-Agent loop, Composio connections UI, and morning brief land in later PRs.
+### Agent core + policy (PR-03)
+
+| Path | Purpose |
+|------|---------|
+| `migrations/20260718210000_agent-runs-tool-runs-artifacts.sql` | `agent_runs`, `tool_runs`, `artifacts`, `tool_runs_public` |
+| `packages/ozyman-policy` | Tool allowlist + `MorningBriefPayload` (Deno copies later) |
+| `lib/agent/` | Next interactive loop primitives (OpenRouter chat, policy, tool_runs log) |
+| `scripts/create-artifacts-bucket.sh` | Create private `artifacts` storage bucket |
+
+```bash
+npx @insforge/cli db migrations up --all
+bash scripts/create-artifacts-bucket.sh
+```
+
+Composio connections UI (PR-05), companion chat SSE (PR-06), confirms (PR-07), and Deno morning brief (PR-08) build on this.
 
 ## Do not commit
 

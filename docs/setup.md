@@ -37,12 +37,47 @@ npx @insforge/cli db migrations new <kebab-name>
 ```
 
 PR-02 core tables: `profiles`, `threads`, `messages` (+ RLS, grants, `updated_at` triggers).  
+PR-03 agent audit: `agent_runs`, `tool_runs` (+ `args_execute` column REVOKE, `tool_runs_public` view), `artifacts`, `messages.agent_run_id`, path-scoped storage RLS for bucket `artifacts`.
+
 On first authenticated layout load, `lib/profile/ensureProfile.ts` inserts a profile if missing, then fills null seed fields (race-safe select → insert → re-select → conditional update):
 
 - `digest_email` from the session/OAuth email when the column is null
 - `composio_entity_id` from `COMPOSIO_DEFAULT_ENTITY_ID` when set and the column is null
 
 Prefer migrations over ad-hoc `db query` for schema. `npx @insforge/cli db import <file.sql>` is available for one-shot SQL import if needed.
+
+### Client rule for tool_runs
+
+- Query **`tool_runs_public`** (or an explicit column list **excluding** `args_execute`).
+- Do **not** `.select('*')` on base `tool_runs` for authenticated sessions.
+- Load/write `args_execute` only via **admin client** or SECURITY DEFINER RPCs after ownership checks (confirm algorithm).
+
+### Storage bucket: `artifacts`
+
+Private bucket for brief HTML, email drafts, resumes, etc. Object keys are path-scoped:
+
+```text
+{user_id}/briefs/...
+{user_id}/drafts/...
+```
+
+Create once (linked project required):
+
+```bash
+bash scripts/create-artifacts-bucket.sh
+# or: npx @insforge/cli storage create-bucket artifacts --private
+```
+
+Migration `20260718210000_agent-runs-tool-runs-artifacts.sql` installs path RLS on `storage.objects` for `bucket = 'artifacts'` (`storage.foldername(key)[1] = auth.jwt()->>'sub'`). Always persist both `storage_url` and `storage_key` on `public.artifacts`.
+
+### Policy package + Next agent core
+
+| Path | Role |
+|------|------|
+| `packages/ozyman-policy` | Canonical tool allowlist + `MorningBriefPayload` schema |
+| `lib/agent/*` | Next interactive loop (types, policy resolve, OpenRouter chat, tool_runs logging) |
+
+Deno morning-brief (PR-08) **copies** allowlist + schema from the package — it does **not** import `lib/agent/loop`.
 
 ---
 

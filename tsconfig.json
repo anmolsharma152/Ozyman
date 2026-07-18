@@ -15,7 +15,9 @@
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@ozyman/policy": ["./packages/ozyman-policy/src/index.ts"],
+      "@ozyman/policy/*": ["./packages/ozyman-policy/src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
