@@ -20,14 +20,21 @@ function clip(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s
 }
 
-async function gatherGmail(entityId: string): Promise<{ text: string; ok: boolean }> {
+async function gatherGmail(
+  entityId: string,
+): Promise<{ text: string; ok: boolean; error?: string }> {
   const r = await executeTool('GMAIL_FETCH_EMAILS', entityId, {
     max_results: 12,
     query: 'is:unread newer_than:3d',
     verbose: false,
   })
   if (!r.successful) {
-    return { ok: false, text: `Gmail unavailable: ${r.error ?? 'error'}` }
+    const error = r.error ?? 'error'
+    return {
+      ok: false,
+      error,
+      text: `Gmail unavailable: ${error}`,
+    }
   }
   return {
     ok: true,
@@ -38,15 +45,17 @@ async function gatherGmail(entityId: string): Promise<{ text: string; ok: boolea
 async function gatherGithub(
   entityId: string,
   repos: Array<{ owner: string; repo: string }>,
-): Promise<{ text: string; ok: boolean }> {
+): Promise<{ text: string; ok: boolean; error?: string }> {
   const parts: string[] = []
   let ok = true
+  let error: string | undefined
   const me = await executeTool('GITHUB_GET_THE_AUTHENTICATED_USER', entityId, {})
   if (me.successful) {
     parts.push(`GitHub user: ${clip(JSON.stringify(me.data), 800)}`)
   } else {
     ok = false
-    parts.push(`GitHub user unavailable: ${me.error ?? 'error'}`)
+    error = me.error ?? 'error'
+    parts.push(`GitHub user unavailable: ${error}`)
   }
 
   for (const { owner, repo } of repos.slice(0, 5)) {
@@ -67,7 +76,7 @@ async function gatherGithub(
   if (repos.length === 0) {
     parts.push('No watched github_repos in profile.settings yet.')
   }
-  return { ok, text: parts.join('\n\n') }
+  return { ok, text: parts.join('\n\n'), error }
 }
 
 async function gatherTasks(userId: string): Promise<string> {

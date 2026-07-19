@@ -110,8 +110,13 @@ export function KicksCard({ brief }: KicksCardProps) {
       ) : null}
 
       {payload.unavailable?.length ? (
-        <p className="text-xs text-shell-muted/80">
-          Soft-failed: {payload.unavailable.join(', ')}
+        <p className="text-xs text-amber-200/90">
+          Couldn&apos;t reach: {payload.unavailable.join(', ')}. Open{' '}
+          <Link href="/connections" className="underline">
+            Apps
+          </Link>{' '}
+          and re-link, or retry after Composio CLI login. Generic kicks above may
+          be incomplete.
         </p>
       ) : null}
 
