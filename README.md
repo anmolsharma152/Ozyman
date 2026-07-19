@@ -50,15 +50,60 @@ Open [http://localhost:3000](http://localhost:3000). Sign in with **Google OAuth
 | `/settings` | Account, sign out, connected apps, **Manage apps** (Link/Verify) |
 | `/connections` | Redirects → `/settings` |
 
-## Architecture (short)
+## Architecture
 
-```text
-Next.js App Router
-  ├─ InsForge SSR auth + Postgres (profiles, threads, messages, tasks, …)
-  ├─ OpenRouter chat / brief LLM
-  └─ Composio tools (Gmail, GitHub, Slack)
-       ak_ project key → per-user entity ozyman:<userId>
-       uak_ user key   → local CLI only (not multi-user)
+```mermaid
+graph TB
+    User([Browser])
+
+    subgraph Next.js App Router
+        Home["/ — Kicks Card"]
+        Chat["/chat — Agent Chat"]
+        Tasks["/tasks — Task Board"]
+        Settings["/settings — Connections"]
+        BriefAPI["/api/brief/run"]
+        AgentRun["/api/agent/run"]
+        AgentConfirm["/api/agent/confirm"]
+        ConnStatus["/api/connections/status"]
+        ConnLink["/api/connections/[toolkit]/link"]
+        Smoke["/api/connections/smoke"]
+    end
+
+    subgraph InsForge
+        Auth["SSR Auth (cookies, PKCE)"]
+        Postgres[("Postgres\nprofiles · threads\nmessages · tasks\nconnections · agent_runs\ntool_runs · artifacts")]
+        Storage["Storage (later)"]
+    end
+
+    subgraph OpenRouter
+        LLM["GPT-4.1 Mini\n(morning brief + chat)"]
+    end
+
+    subgraph Composio ["Composio (ak_ project key)"]
+        Entity["Entity ozyman:<userId>"]
+        Gmail["Gmail\nread / search / send"]
+        GitHub["GitHub\nissues / PRs / repos"]
+        Slack["Slack\nchannels / messages"]
+    end
+
+    User --> Home & Chat & Tasks & Settings
+    Home --> BriefAPI
+    Chat --> AgentRun --> AgentConfirm
+    Settings --> ConnStatus & ConnLink & Smoke
+
+    BriefAPI --> LLM
+    AgentRun --> LLM
+
+    AgentRun --> Gmail & GitHub & Slack
+    BriefAPI --> Gmail & GitHub
+
+    Gmail & GitHub & Slack --> Entity
+    Entity --> Auth
+
+    Home & Chat & Tasks --> Postgres
+    AgentRun --> Postgres
+    BriefAPI --> Postgres
+    Auth --> Postgres
 ```
 
 ## Composio
