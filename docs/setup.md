@@ -44,7 +44,9 @@ PR-03 agent audit: `agent_runs`, `tool_runs` (+ `args_execute` column REVOKE, `t
 On first authenticated layout load, `lib/profile/ensureProfile.ts` inserts a profile if missing, then fills null seed fields (race-safe select → insert → re-select → conditional update):
 
 - `digest_email` from the session/OAuth email when the column is null
-- `composio_entity_id` from `COMPOSIO_DEFAULT_ENTITY_ID` when set and the column is null
+- `composio_entity_id` from shared env seed **only** in local user-key / `COMPOSIO_ALLOW_SHARED_ENTITY=1` mode — **not** for multi-user project keys (those use `ozyman:<userId>`)
+
+Profile bootstrap **soft-times out** (~8s) so a slow InsForge cannot block navigation forever (see STATUS.md).
 
 Prefer migrations over ad-hoc `db query` for schema. `npx @insforge/cli db import <file.sql>` is available for one-shot SQL import if needed.
 
@@ -130,7 +132,7 @@ cp .env.example .env.local
    COMPOSIO_API_KEY=ak_...
    # optional: COMPOSIO_ENTITY_PREFIX=ozyman   # default → entity ozyman:<insforge_user_id>
    ```
-3. Each signed-in user gets a **private** Composio entity `ozyman:<userId>`. They **Link** Gmail / GitHub / Slack in the Apps UI under that entity.
+3. Each signed-in user gets a **private** Composio entity `ozyman:<userId>`. They **Link** Gmail / GitHub / Slack under **Settings → Manage apps**.
 4. Tools always execute with the project key + that user entity via `@composio/core` — **no CLI fallback** in project mode (CLI would run as the host machine’s accounts).
 5. Never set `COMPOSIO_DEFAULT_ENTITY_ID` in multi-user deploys (that seed shares one entity across users).
 
@@ -191,7 +193,7 @@ Full design appendix mirrors most of this table: design doc § Appendix A. `APP_
 | `NEXT_PUBLIC_INSFORGE_ANON_KEY` | yes | Public |
 | `NEXT_PUBLIC_APP_URL` | yes | e.g. `http://localhost:3000` |
 | `COMPOSIO_API_KEY` | yes (server) | Never public prefix |
-| `COMPOSIO_DEFAULT_ENTITY_ID` | yes | Seed only |
+| `COMPOSIO_DEFAULT_ENTITY_ID` | local only | Shared seed only with `COMPOSIO_ALLOW_SHARED_ENTITY=1` or `uak_` |
 | `OPENROUTER_API_KEY` | if direct OpenRouter | Prefer InsForge AI gateway |
 | `OPENROUTER_CHAT_MODEL` | optional | |
 | `TOOL_ARGS_ENCRYPTION_KEY` | recommended | Next confirm path; see edge note if brief encrypts args |
@@ -228,16 +230,16 @@ openssl rand -hex 32
 
 ---
 
-## Bootstrap order (docs-only now; runtime in later PRs)
+## Bootstrap order (current app)
 
-1. **Gitignore / env template** — this PR (PR-00).
-2. Link InsForge project if needed (`npx @insforge/cli` / existing `.insforge` locally only).
-3. `npx @insforge/cli ai setup` for OpenRouter gateway.
-4. Create Resend account + verified sender → set `RESEND_API_KEY`, `DIGEST_FROM_EMAIL`, `DIGEST_EMAIL_PROVIDER=resend`.
-5. Copy Composio project API key → `COMPOSIO_API_KEY`; note CLI consumer entity → `COMPOSIO_DEFAULT_ENTITY_ID`.
-6. Generate `CRON_SECRET`; set `MORNING_BRIEF_USER_ID` after first auth user exists (PR-01+).
-7. Add keys to InsForge secrets for edge functions (PR-08 brief), including **`APP_URL`** (production app origin for digest deep links), digest/Resend vars, cron, admin, and Composio.
-8. Scaffold Next app + SSR auth (PR-01) using `.env.local` from this template.
+1. Link InsForge project (`.insforge/` local only) + apply migrations.
+2. Copy `.env.example` → `.env.local`; set InsForge public vars + `NEXT_PUBLIC_APP_URL=http://localhost:3000`.
+3. Set `OPENROUTER_API_KEY` (or `npx @insforge/cli ai setup`).
+4. Set **Composio project** `COMPOSIO_API_KEY=ak_…` (not `uak_…` for multi-user).
+5. `npm install && npm run dev` → sign in → **Settings → Manage apps** → Link Gmail/GitHub/Slack → Verify.
+6. Home → Generate kicks; Chat → tool questions.
+7. Optional digests: Resend vars + edge secrets when shipping scheduled brief.
+8. Optional edge: `CRON_SECRET`, `MORNING_BRIEF_USER_ID`, `APP_URL`, admin keys for Deno morning-brief.
 
 ---
 
