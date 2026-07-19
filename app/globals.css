@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-shell-bg text-shell-fg font-sans antialiased;
+  background-image:
+    radial-gradient(
+      ellipse 80% 50% at 50% -20%,
+      rgba(110, 231, 183, 0.12),
+      transparent
+    ),
+    radial-gradient(
+      ellipse 60% 40% at 100% 100%,
+      rgba(251, 191, 36, 0.06),
+      transparent
+    );
+}
+
+/* Large tap targets for companion feel */
+@layer components {
+  .btn-primary {
+    @apply inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl
+      bg-shell-accent px-5 py-3 text-base font-semibold text-shell-bg
+      transition hover:bg-shell-accentDim active:scale-[0.98]
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl
+      border border-shell-border bg-shell-surface/60 px-4 py-2.5 text-sm
+      font-medium text-shell-fg transition hover:border-shell-muted
+      hover:bg-shell-card active:scale-[0.98];
+  }
+
+  .card {
+    @apply rounded-3xl border border-shell-border bg-shell-card/90 p-5 shadow-card
+      backdrop-blur-sm;
+  }
+}

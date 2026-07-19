@@ -1,0 +1,18 @@
+{
+  "name": "@ozyman/policy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Canonical Ozyman tool allowlist + MorningBriefPayload schema. Deno morning-brief copies these values (keep in sync).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tool-policy": "./src/tool-policy.ts",
+    "./brief-schema": "./src/brief-schema.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "sideEffects": false
+}
