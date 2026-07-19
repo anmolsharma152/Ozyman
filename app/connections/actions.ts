@@ -51,10 +51,5 @@ export async function verifyToolkitAction(
   return runToolkitSmokeForUser(user, toolkit)
 }
 
-/** Back-compat alias for older UI. */
-export async function verifyGithubAction(): Promise<SmokeResult> {
-  return verifyToolkitAction('github')
-}
-
 /** Re-export for client type imports only (erased at compile). */
 export type { ToolkitConnection }

@@ -363,13 +363,6 @@ export async function runToolkitSmokeForUser(
   }
 }
 
-/** @deprecated Prefer runToolkitSmokeForUser(user, 'github') */
-export async function runGithubSmokeForUser(
-  user: SessionUser,
-): Promise<SmokeOpResult> {
-  return runToolkitSmokeForUser(user, 'github')
-}
-
 /** Friendly label for post-OAuth toast (e.g. "Gmail"). */
 export function toolkitLabel(toolkit: string): string {
   const t = toolkit.toLowerCase()

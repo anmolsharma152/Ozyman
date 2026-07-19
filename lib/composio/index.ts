@@ -38,7 +38,6 @@ export {
   getConnectionsSnapshot,
   linkToolkitForUser,
   runToolkitSmokeForUser,
-  runGithubSmokeForUser,
   publicErrorMessage,
   toolkitLabel,
   type ConnectionsSnapshot,

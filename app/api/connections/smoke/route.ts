@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/app/lib/auth'
-import { isComposioConfigured, runGithubSmokeForUser } from '@/lib/composio'
+import { isComposioConfigured, runToolkitSmokeForUser } from '@/lib/composio'
 
 /**
  * POST /api/connections/smoke
- * Thin HTTP wrapper over runGithubSmokeForUser (shared with server actions).
+ * Thin HTTP wrapper over runToolkitSmokeForUser (shared with server actions).
  */
 export async function POST() {
   const user = await getSessionUser()
@@ -23,7 +23,7 @@ export async function POST() {
     )
   }
 
-  const result = await runGithubSmokeForUser(user)
+  const result = await runToolkitSmokeForUser(user, 'github')
 
   if (result.ok) {
     return NextResponse.json(result)
