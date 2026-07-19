@@ -274,7 +274,7 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
                 <li>“List open PRs on anmolsharma152/Ozyman”</li>
               </ul>
               <p className="pt-2 text-xs">
-                Connect Gmail/GitHub under Apps first. Sends need your OK.
+                Connect apps under Settings if needed. Sends need your OK.
               </p>
             </div>
           ) : (

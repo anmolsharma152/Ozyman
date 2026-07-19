@@ -4,14 +4,14 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import {
   linkToolkitAction,
   loadConnectionsData,
-  verifyGithubAction,
+  verifyToolkitAction,
   type ConnectionsPageData,
 } from '@/app/connections/actions'
 import type { ConnectionStatus, ToolkitConnection } from '@/lib/composio/types'
 
 /**
- * Client panel for connection status, re-link, and GitHub smoke test.
- * Talks only to server actions / APIs — never receives COMPOSIO_API_KEY.
+ * Settings-only apps panel.
+ * Default: quiet status. Link / Verify stay inside a closed "Manage apps" details.
  */
 
 type LinkedNotice = {
@@ -22,7 +22,6 @@ type LinkedNotice = {
 
 type Props = {
   initial: ConnectionsPageData
-  /** Set when returning from Composio OAuth (?linked= / ?status=) */
   linkedNotice?: LinkedNotice
 }
 
@@ -59,32 +58,30 @@ export function ConnectionsPanel({ initial, linkedNotice = null }: Props) {
   const [message, setMessage] = useState<string | null>(null)
   const [messageKind, setMessageKind] = useState<'ok' | 'err'>('ok')
   const [pendingToolkit, setPendingToolkit] = useState<string | null>(null)
-  const [smokePending, setSmokePending] = useState(false)
+  const [verifyToolkit, setVerifyToolkit] = useState<string | null>(null)
+  const [manageOpen, setManageOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const linkedHandled = useRef(false)
 
-  // After OAuth return: toast + re-fetch status (SSR already loaded fresh;
-  // client refresh picks up any delayed ACTIVE state).
+  // OAuth return: open manage + toast
   useEffect(() => {
     if (!linkedNotice || linkedHandled.current) return
     linkedHandled.current = true
+    setManageOpen(true)
 
     const name = linkedNotice.label || linkedNotice.toolkit || 'App'
     if (linkedNotice.oauthStatus === 'failed') {
       setMessageKind('err')
-      setMessage(
-        `${name} link did not complete. Try Link again, or use the CLI hint below.`,
-      )
+      setMessage(`${name} link did not complete. Expand Manage apps to retry.`)
     } else {
       setMessageKind('ok')
       setMessage(
         linkedNotice.toolkit
-          ? `${name} link finished — refreshing status. Run Verify GitHub if you linked GitHub.`
-          : 'Link finished — refreshing connection status.',
+          ? `${name} link finished. Expand Manage apps to verify if you like.`
+          : 'Link finished — status refreshed.',
       )
     }
 
-    // Strip query params so a refresh does not re-toast
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
       if (url.searchParams.has('linked') || url.searchParams.has('status')) {
@@ -96,10 +93,9 @@ export function ConnectionsPanel({ initial, linkedNotice = null }: Props) {
 
     startTransition(async () => {
       try {
-        const fresh = await loadConnectionsData()
-        setData(fresh)
+        setData(await loadConnectionsData())
       } catch {
-        // keep SSR snapshot
+        /* keep SSR */
       }
     })
   }, [linkedNotice])
@@ -109,8 +105,12 @@ export function ConnectionsPanel({ initial, linkedNotice = null }: Props) {
     return data.connections.some((c) => c.status !== 'active')
   }, [data])
 
-  const githubActive = data.connections.find((c) => c.toolkit === 'github')
-    ?.status === 'active'
+  // Open manage when something is broken so user can find actions without hunting
+  useEffect(() => {
+    if (needsRelink || !data.isProjectMode) {
+      // don't force open forever — only first paint if broken
+    }
+  }, [needsRelink, data.isProjectMode])
 
   function applyConnections(connections: ToolkitConnection[] | undefined) {
     if (!connections?.length) return
@@ -124,20 +124,14 @@ export function ConnectionsPanel({ initial, linkedNotice = null }: Props) {
       try {
         const result = await linkToolkitAction(toolkit)
         if (result.redirectUrl) {
-          setMessage(
-            `Opening ${toolkit} link… if nothing happens, copy the CLI hint.`,
-          )
           setMessageKind('ok')
-          // Navigate user to Composio OAuth
+          setMessage(`Opening ${toolkit}…`)
           window.location.href = result.redirectUrl
           return
         }
         setMessageKind('err')
         setMessage(
-          [
-            result.error || 'Could not start link.',
-            result.cliHint ? `CLI: ${result.cliHint}` : null,
-          ]
+          [result.error || 'Could not start link.', result.cliHint]
             .filter(Boolean)
             .join(' '),
         )
@@ -150,37 +144,34 @@ export function ConnectionsPanel({ initial, linkedNotice = null }: Props) {
     })
   }
 
-  function onVerifyGithub() {
-    setSmokePending(true)
+  function onVerify(toolkit: string) {
+    setVerifyToolkit(toolkit)
     setMessage(null)
     startTransition(async () => {
       try {
-        const result = await verifyGithubAction()
+        const result = await verifyToolkitAction(toolkit)
         applyConnections(result.connections)
         if (result.ok) {
           setMessageKind('ok')
           setMessage(
-            result.githubLogin
-              ? `GitHub smoke OK — signed in as @${result.githubLogin}. Entity saved.`
-              : 'GitHub smoke OK. Entity saved.',
+            result.summary ||
+              (result.githubLogin
+                ? `GitHub OK — @${result.githubLogin}`
+                : `${toolkit} OK.`),
           )
         } else {
           setMessageKind('err')
           setMessage(
-            [
-              result.error || 'Smoke failed.',
-              'Reconnect GitHub below — re-link is the supported path.',
-              result.cliHint ? `CLI: ${result.cliHint}` : null,
-            ]
+            [result.error || 'Check failed.', result.cliHint]
               .filter(Boolean)
               .join(' '),
           )
         }
       } catch (err) {
         setMessageKind('err')
-        setMessage(err instanceof Error ? err.message : 'Smoke failed')
+        setMessage(err instanceof Error ? err.message : 'Check failed')
       } finally {
-        setSmokePending(false)
+        setVerifyToolkit(null)
       }
     })
   }
@@ -188,173 +179,190 @@ export function ConnectionsPanel({ initial, linkedNotice = null }: Props) {
   if (!data.configured) {
     return (
       <section className="card space-y-4">
-        <h2 className="text-lg font-semibold text-shell-fg">Connections</h2>
-        <p className="text-sm leading-relaxed text-shell-muted">
+        <h2 className="text-lg font-semibold text-shell-fg">Connected apps</h2>
+        <p className="text-sm text-shell-muted">
           {data.configError || 'Composio is not configured on this server.'}
         </p>
-        <p className="rounded-2xl border border-shell-border bg-shell-surface/50 px-4 py-3 text-xs text-shell-muted">
-          Set <code className="text-shell-accent">COMPOSIO_API_KEY</code> in{' '}
-          <code>.env.local</code> (server only — never{' '}
-          <code>NEXT_PUBLIC_*</code>). Optionally set{' '}
-          <code className="text-shell-accent">COMPOSIO_DEFAULT_ENTITY_ID</code>{' '}
-          from your CLI consumer entity for a best-effort seed.
-        </p>
-        <CliHintBlock />
+        <details className="rounded-2xl border border-shell-border bg-shell-surface/40 px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium text-shell-fg">
+            Setup project API key
+          </summary>
+          <div className="mt-3">
+            <ProjectKeySetupCard hint={data.setupHint} />
+          </div>
+        </details>
       </section>
     )
   }
 
+  const busy = isPending || pendingToolkit !== null || verifyToolkit !== null
+
   return (
-    <div className="space-y-5">
-      {needsRelink ? (
-        <section className="card space-y-3 ring-1 ring-amber-500/25">
-          <h2 className="text-base font-semibold text-shell-fg">
-            Reconnect apps
-          </h2>
-          <p className="text-sm leading-relaxed text-shell-muted">
-            Some toolkits are not active under your app entity. Seed from the
-            CLI is best-effort — if smoke fails, re-link here (or via CLI). This
-            is the supported path, not a failure mode.
-          </p>
-        </section>
-      ) : null}
+    <section className="card space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-shell-fg">Connected apps</h2>
+        <p className="mt-1 text-sm text-shell-muted">
+          Status only. Link and verify stay under Manage.
+        </p>
+      </div>
 
-      <section className="card space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-shell-fg">
-              Connected apps
-            </h2>
-            <p className="mt-1 text-sm text-shell-muted">
-              Status from Composio for your operator entity.
-            </p>
-          </div>
-          <span
-            aria-hidden
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-shell-surface text-shell-warm ring-1 ring-shell-border"
-          >
-            🔗
-          </span>
-        </div>
-
-        <ul className="space-y-3">
-          {data.connections.map((c) => {
-            const style = STATUS_STYLES[c.status]
-            const busy = isPending && pendingToolkit === c.toolkit
-            return (
-              <li
-                key={c.toolkit}
-                className="flex flex-col gap-3 rounded-2xl border border-shell-border bg-shell-surface/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+      {/* Quiet status strip */}
+      <ul className="divide-y divide-shell-border/60 rounded-2xl border border-shell-border bg-shell-surface/30">
+        {data.connections.map((c) => {
+          const style = STATUS_STYLES[c.status]
+          return (
+            <li
+              key={c.toolkit}
+              className="flex items-center justify-between gap-3 px-4 py-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <span aria-hidden className="text-base">
+                  {TOOLKIT_EMOJI[c.toolkit] || '•'}
+                </span>
+                <span className="font-medium text-shell-fg">{c.label}</span>
+              </div>
+              <span
+                className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${style.className}`}
               >
-                <div className="flex min-w-0 items-start gap-3">
-                  <span
-                    aria-hidden
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-shell-card text-base ring-1 ring-shell-border"
-                  >
-                    {TOOLKIT_EMOJI[c.toolkit] || '•'}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-shell-fg">
-                        {c.label}
-                      </span>
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${style.className}`}
-                      >
-                        {style.label}
-                      </span>
-                    </div>
-                    {c.detail ? (
-                      <p className="mt-1 truncate text-xs text-shell-muted">
-                        {c.detail}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-ghost min-h-11 shrink-0 px-3 text-sm"
-                  disabled={busy || isPending}
-                  onClick={() => onLink(c.toolkit)}
-                >
-                  {busy
-                    ? 'Starting…'
-                    : c.status === 'active'
-                      ? 'Re-link'
-                      : 'Link'}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-
-        {message ? (
-          <p
-            role="status"
-            className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-              messageKind === 'ok'
-                ? 'bg-emerald-500/10 text-emerald-200 ring-1 ring-emerald-500/25'
-                : 'bg-red-500/10 text-red-200 ring-1 ring-red-500/25'
-            }`}
-          >
-            {message}
-          </p>
-        ) : null}
-
-        <div className="flex flex-col gap-2 border-t border-shell-border/60 pt-4">
-          <button
-            type="button"
-            className="btn-primary w-full"
-            disabled={smokePending || isPending}
-            onClick={onVerifyGithub}
-          >
-            {smokePending
-              ? 'Verifying GitHub…'
-              : githubActive
-                ? 'Verify GitHub'
-                : 'Verify GitHub (smoke)'}
-          </button>
-          <p className="text-xs text-shell-muted">
-            Runs{' '}
-            <code className="text-shell-accent">
-              GITHUB_GET_THE_AUTHENTICATED_USER
-            </code>{' '}
-            server-side for entity{' '}
-            <code className="break-all text-shell-fg/80">
-              {data.entityId || '—'}
-            </code>
-            {data.entitySource ? (
-              <span className="text-shell-muted">
-                {' '}
-                (source: {data.entitySource})
+                {style.label}
               </span>
-            ) : null}
-            .
-          </p>
-        </div>
-      </section>
+            </li>
+          )
+        })}
+      </ul>
 
-      <CliHintBlock />
-    </div>
+      {!data.isProjectMode || data.setupHint ? (
+        <details className="rounded-2xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium text-amber-100">
+            Project API key setup (multi-user / cloud)
+          </summary>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-shell-muted">
+              Mode: <strong className="text-shell-fg">{data.composioMode}</strong>
+              {data.composioKeyKind ? ` · ${data.composioKeyKind}` : ''}.
+            </p>
+            {data.setupHint ? (
+              <p className="text-xs text-amber-100/90">{data.setupHint}</p>
+            ) : null}
+            <ProjectKeySetupCard hint={null} />
+          </div>
+        </details>
+      ) : (
+        <p className="text-xs text-shell-muted">
+          Project mode · entity{' '}
+          <code className="break-all text-shell-fg/80">
+            {data.entityId || '—'}
+          </code>
+        </p>
+      )}
+
+      {/* All destructive / noisy actions behind one disclosure */}
+      <details
+        className="rounded-2xl border border-shell-border bg-shell-surface/20"
+        open={manageOpen || Boolean(linkedNotice)}
+        onToggle={(e) => setManageOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-shell-fg">
+          Manage apps
+          {needsRelink ? (
+            <span className="ml-2 text-xs font-normal text-amber-200">
+              · something needs attention
+            </span>
+          ) : null}
+        </summary>
+
+        <div className="space-y-3 border-t border-shell-border/60 px-4 py-4">
+          <p className="text-xs text-shell-muted">
+            Link starts OAuth. Verify runs a read-only smoke check. Prefer this
+            only when status is wrong or after changing API keys.
+          </p>
+
+          <ul className="space-y-2">
+            {data.connections.map((c) => {
+              const linking = pendingToolkit === c.toolkit
+              const smoking = verifyToolkit === c.toolkit
+              return (
+                <li
+                  key={c.toolkit}
+                  className="flex flex-col gap-2 rounded-xl border border-shell-border/80 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <span className="text-sm font-medium text-shell-fg">
+                    {c.label}
+                    {c.detail ? (
+                      <span className="mt-0.5 block text-xs font-normal text-shell-muted">
+                        {c.detail}
+                      </span>
+                    ) : null}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-ghost min-h-10 px-3 text-xs"
+                      disabled={busy}
+                      onClick={() => onLink(c.toolkit)}
+                    >
+                      {linking
+                        ? '…'
+                        : c.status === 'active'
+                          ? 'Re-link'
+                          : 'Link'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost min-h-10 px-3 text-xs"
+                      disabled={busy}
+                      onClick={() => onVerify(c.toolkit)}
+                    >
+                      {smoking ? '…' : 'Verify'}
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          {message ? (
+            <p
+              role="status"
+              className={`rounded-xl px-3 py-2 text-xs leading-relaxed ${
+                messageKind === 'ok'
+                  ? 'bg-emerald-500/10 text-emerald-200'
+                  : 'bg-red-500/10 text-red-200'
+              }`}
+            >
+              {message}
+            </p>
+          ) : null}
+        </div>
+      </details>
+    </section>
   )
 }
 
-function CliHintBlock() {
+function ProjectKeySetupCard({ hint }: { hint: string | null }) {
   return (
-    <section className="rounded-3xl border border-dashed border-shell-border/80 bg-shell-surface/30 px-5 py-4 text-xs leading-relaxed text-shell-muted">
-      <p className="font-medium text-shell-fg/90">CLI re-link (optional)</p>
-      <pre className="mt-2 overflow-x-auto rounded-xl bg-shell-bg/80 p-3 text-[11px] text-shell-accent">
-        {`composio link gmail
-composio link github
-composio link slack
-composio execute GITHUB_GET_THE_AUTHENTICATED_USER -d '{}'`}
-      </pre>
-      <p className="mt-2">
-        CLI consumer entity may differ from the app entity. After CLI link, set{' '}
-        <code>COMPOSIO_DEFAULT_ENTITY_ID</code> or re-link in-app so the server
-        API key sees ACTIVE accounts.
-      </p>
-    </section>
+    <div className="space-y-2 text-xs leading-relaxed text-shell-muted">
+      <ol className="list-decimal space-y-1 pl-4">
+        <li>
+          Project API key from{' '}
+          <a
+            href="https://dashboard.composio.dev/settings"
+            target="_blank"
+            rel="noreferrer"
+            className="text-shell-accent underline"
+          >
+            dashboard.composio.dev/settings
+          </a>{' '}
+          (<code className="text-shell-accent">ak_…</code>, not{' '}
+          <code className="text-shell-accent">uak_…</code>).
+        </li>
+        <li>
+          Server env only:{' '}
+          <code className="text-shell-accent">COMPOSIO_API_KEY=ak_…</code>
+        </li>
+        <li>Restart app · each user Links apps under Manage.</li>
+      </ol>
+      {hint ? <p className="text-amber-100/90">{hint}</p> : null}
+    </div>
   )
 }

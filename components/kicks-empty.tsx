@@ -43,7 +43,7 @@ export function KicksEmpty() {
       </Link>
 
       <p className="text-xs leading-relaxed text-shell-muted/80">
-        Connect Gmail &amp; GitHub under Apps, then ask what matters today.
+        Connect Gmail &amp; GitHub under Settings if needed, then chat.
       </p>
     </section>
   )

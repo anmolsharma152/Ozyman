@@ -16,11 +16,17 @@ export async function GET() {
   if (!isComposioConfigured()) {
     return NextResponse.json(
       {
-        error: 'COMPOSIO_API_KEY is not configured on the server',
+        error:
+          'COMPOSIO_API_KEY is not configured — set a project key (ak_…) from dashboard.composio.dev/settings',
         configured: false,
         entityId: null,
         entitySource: null,
         connections: [],
+        composioMode: 'not configured',
+        composioKeyKind: 'missing',
+        isProjectMode: false,
+        setupHint:
+          'Use a project API key for multi-user / cloud. Do not use uak_ user keys.',
       },
       { status: 503 },
     )

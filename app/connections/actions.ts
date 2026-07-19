@@ -4,7 +4,7 @@ import { getSessionUser } from '@/app/lib/auth'
 import {
   getConnectionsSnapshot,
   linkToolkitForUser,
-  runGithubSmokeForUser,
+  runToolkitSmokeForUser,
   type ConnectionsSnapshot,
   type LinkOpResult,
   type SmokeOpResult,
@@ -26,6 +26,11 @@ export async function loadConnectionsData(): Promise<ConnectionsPageData> {
       entitySource: null,
       connections: [],
       configError: 'Sign in to manage connections.',
+      composioMode: 'not configured',
+      composioKeyKind: 'missing',
+      isProjectMode: false,
+      setupHint:
+        'Sign in, then set a Composio project API key (ak_…) for multi-user deploys.',
     }
   }
   return getConnectionsSnapshot(user)
@@ -37,10 +42,18 @@ export async function linkToolkitAction(toolkit: string): Promise<LinkResult> {
   return linkToolkitForUser(user, toolkit)
 }
 
-export async function verifyGithubAction(): Promise<SmokeResult> {
+/** Verify any MVP toolkit with a read-only smoke tool. */
+export async function verifyToolkitAction(
+  toolkit: string,
+): Promise<SmokeResult> {
   const user = await getSessionUser()
   if (!user) return { ok: false, error: 'Unauthorized', needsRelink: true }
-  return runGithubSmokeForUser(user)
+  return runToolkitSmokeForUser(user, toolkit)
+}
+
+/** Back-compat alias for older UI. */
+export async function verifyGithubAction(): Promise<SmokeResult> {
+  return verifyToolkitAction('github')
 }
 
 /** Re-export for client type imports only (erased at compile). */
