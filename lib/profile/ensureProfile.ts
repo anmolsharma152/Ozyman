@@ -1,6 +1,7 @@
 import { cache } from 'react'
 import type { SessionUser } from '@/app/lib/auth'
 import { createInsForgeServerClient } from '@/app/lib/insforge/server'
+import { formatUnknownError, withTimeout } from '@/lib/errors'
 
 export type ProfileSettings = {
   github_repos?: Array<{ owner: string; repo: string }>
@@ -28,6 +29,9 @@ type ProfileClient = Awaited<ReturnType<typeof createInsForgeServerClient>>
 const PROFILE_SELECT =
   'id, display_name, timezone, brief_cron_local, brief_email_enabled, digest_email, composio_entity_id, settings, created_at, updated_at'
 
+/** Don't block page navigation for a full InsForge 30s SDK timeout. */
+const PROFILE_SOFT_MS = 8_000
+
 function defaultSettings(): ProfileSettings {
   return {
     github_repos: [],
@@ -41,9 +45,6 @@ type SeedInputs = {
   defaultEntity: string | null
 }
 
-/**
- * Build a patch that only fills null seed fields (never overwrites user edits).
- */
 function buildNullSeedPatch(
   profile: Profile,
   seeds: SeedInputs,
@@ -61,10 +62,6 @@ function buildNullSeedPatch(
   return patch
 }
 
-/**
- * Apply null-seed patch when present; otherwise return profile unchanged.
- * Used for both the existing-row path and concurrent-insert race re-select.
- */
 async function maybeSeedNulls(
   client: ProfileClient,
   userId: string,
@@ -84,88 +81,116 @@ async function maybeSeedNulls(
     .single()
 
   if (updateError) {
-    console.error('[ensureProfile] update failed', updateError)
+    // Soft-fail: warn with readable text (console.error becomes Next overlay spam)
+    console.warn(
+      '[ensureProfile] update failed:',
+      formatUnknownError(updateError),
+    )
     return profile
   }
 
-  return updated ? normalizeProfile(updated) : profile
+  return updated ? normalizeProfile(updated as Record<string, unknown>) : profile
+}
+
+async function ensureProfileInner(
+  user: SessionUser,
+): Promise<Profile | null> {
+  try {
+    const client = await createInsForgeServerClient()
+    const allowSharedEntity =
+      process.env.COMPOSIO_ALLOW_SHARED_ENTITY === '1' ||
+      (process.env.COMPOSIO_API_KEY?.trim() ?? '').startsWith('uak_')
+    const seeds: SeedInputs = {
+      sessionEmail: user.email?.trim() || null,
+      displayName: user.name?.trim() || null,
+      defaultEntity: allowSharedEntity
+        ? process.env.COMPOSIO_DEFAULT_ENTITY_ID?.trim() || null
+        : null,
+    }
+
+    const { data: existing, error: selectError } = await client.database
+      .from('profiles')
+      .select(PROFILE_SELECT)
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (selectError) {
+      // Use warn + string so Next.js doesn't surface empty `{}` Console Errors
+      console.warn(
+        '[ensureProfile] select failed:',
+        formatUnknownError(selectError),
+      )
+      return null
+    }
+
+    if (!existing) {
+      const { data: inserted, error: insertError } = await client.database
+        .from('profiles')
+        .insert([
+          {
+            id: user.id,
+            display_name: seeds.displayName,
+            digest_email: seeds.sessionEmail,
+            composio_entity_id: seeds.defaultEntity,
+            settings: defaultSettings(),
+          },
+        ])
+        .select(PROFILE_SELECT)
+        .single()
+
+      if (insertError) {
+        const { data: raced, error: raceError } = await client.database
+          .from('profiles')
+          .select(PROFILE_SELECT)
+          .eq('id', user.id)
+          .maybeSingle()
+
+        if (raceError || !raced) {
+          console.warn(
+            '[ensureProfile] insert failed:',
+            formatUnknownError(insertError),
+            raceError ? `| reselect: ${formatUnknownError(raceError)}` : '',
+          )
+          return null
+        }
+        return maybeSeedNulls(
+          client,
+          user.id,
+          normalizeProfile(raced as Record<string, unknown>),
+          seeds,
+        )
+      }
+
+      return inserted
+        ? normalizeProfile(inserted as Record<string, unknown>)
+        : null
+    }
+
+    return maybeSeedNulls(
+      client,
+      user.id,
+      normalizeProfile(existing as Record<string, unknown>),
+      seeds,
+    )
+  } catch (err) {
+    console.warn('[ensureProfile] unexpected:', formatUnknownError(err))
+    return null
+  }
 }
 
 /**
  * First-login (and every authenticated load) profile bootstrap.
- *
- * - Inserts a row when missing (id = auth.users id).
- * - Seeds digest_email from session email when column is null (never overwrites user edits).
- * - Seeds composio_entity_id from COMPOSIO_DEFAULT_ENTITY_ID when set and column is null.
- * - Soft-fails (returns null) if tables are missing or RLS/network errors so the shell still renders.
- *
- * Pattern: select → insert-if-missing (race-safe re-select) → fill null seed fields.
- * Wrapped in React cache() so layout + page share one call per request.
+ * Soft-fails to null on DB/timeout so the shell still renders.
+ * Soft timeout (8s) avoids waiting the full InsForge ~30s SDK timeout on every nav.
  */
 export const ensureProfile = cache(
   async (user: SessionUser): Promise<Profile | null> => {
-    try {
-      const client = await createInsForgeServerClient()
-      const seeds: SeedInputs = {
-        sessionEmail: user.email?.trim() || null,
-        displayName: user.name?.trim() || null,
-        defaultEntity: process.env.COMPOSIO_DEFAULT_ENTITY_ID?.trim() || null,
-      }
-
-      const { data: existing, error: selectError } = await client.database
-        .from('profiles')
-        .select(PROFILE_SELECT)
-        .eq('id', user.id)
-        .maybeSingle()
-
-      if (selectError) {
-        console.error('[ensureProfile] select failed', selectError)
-        return null
-      }
-
-      if (!existing) {
-        const { data: inserted, error: insertError } = await client.database
-          .from('profiles')
-          .insert([
-            {
-              id: user.id,
-              display_name: seeds.displayName,
-              digest_email: seeds.sessionEmail,
-              composio_entity_id: seeds.defaultEntity,
-              settings: defaultSettings(),
-            },
-          ])
-          .select(PROFILE_SELECT)
-          .single()
-
-        if (insertError) {
-          // Race: concurrent first load may insert first — re-select then seed nulls
-          const { data: raced, error: raceError } = await client.database
-            .from('profiles')
-            .select(PROFILE_SELECT)
-            .eq('id', user.id)
-            .maybeSingle()
-
-          if (raceError || !raced) {
-            console.error('[ensureProfile] insert failed', insertError)
-            return null
-          }
-          return maybeSeedNulls(
-            client,
-            user.id,
-            normalizeProfile(raced),
-            seeds,
-          )
-        }
-
-        return inserted ? normalizeProfile(inserted) : null
-      }
-
-      return maybeSeedNulls(client, user.id, normalizeProfile(existing), seeds)
-    } catch (err) {
-      console.error('[ensureProfile] unexpected error', err)
+    return withTimeout(ensureProfileInner(user), PROFILE_SOFT_MS, () => {
+      console.warn(
+        `[ensureProfile] soft-timeout after ${PROFILE_SOFT_MS}ms — continuing without profile`,
+      )
       return null
-    }
+    })
   },
 )
 

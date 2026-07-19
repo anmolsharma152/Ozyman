@@ -3,6 +3,7 @@ import { HomeGreeting } from '@/components/home-greeting'
 import { KicksCard } from '@/components/kicks-card'
 import { ensureProfile } from '@/lib/profile/ensureProfile'
 import { getLatestMorningBrief } from '@/lib/brief/latest'
+import { withTimeout } from '@/lib/errors'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,8 +11,14 @@ export default async function HomePage() {
   const user = await getSessionUser()
   let brief = null
   if (user) {
+    // Layout already tried ensureProfile; cache() dedupes. Soft-bound brief fetch
+    // so a stuck InsForge query never blocks Home forever.
     await ensureProfile(user)
-    brief = await getLatestMorningBrief(user.id)
+    brief = await withTimeout(
+      getLatestMorningBrief(user.id),
+      6_000,
+      () => null,
+    )
   }
 
   return (
