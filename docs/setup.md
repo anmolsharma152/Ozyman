@@ -117,13 +117,25 @@ cp .env.example .env.local
 - Switch to `insforge` only when paid email is available; then use display-name `from` + user-controlled `replyTo`.
 - Digest HTML deep links need a public app origin on the **edge** runtime (`APP_URL` — same value as Next `NEXT_PUBLIC_APP_URL`). Deno does not inherit Next `NEXT_PUBLIC_*` unless also set as an InsForge secret.
 
-### Composio entity seed
+### Composio project API key (multi-user / cloud)
 
-1. Existing ACTIVE Gmail / GitHub / Slack connections bind to the **CLI consumer entity**, not automatically to a future InsForge user id.
-2. Set `COMPOSIO_DEFAULT_ENTITY_ID` to that consumer entity id for a **best-effort** seed into `profiles.composio_entity_id`.
-3. **Do not assume** server `@composio/core` + project API key sees the same ACTIVE connections as the CLI.
-4. If smoke (`GITHUB_GET_THE_AUTHENTICATED_USER`) fails → force in-app re-link (supported path).
-5. `COMPOSIO_API_KEY` is **server/edge only** — never `NEXT_PUBLIC_*`. Tokens stay in Composio; Ozyman DB only mirrors toolkit status.
+**Production path — required for multi-user and cloud deploys.**
+
+1. Create a **project API key** at [dashboard.composio.dev/settings](https://dashboard.composio.dev/settings) (`ak_…`).  
+   **Do not** put a CLI user key (`uak_…`) in production env — the SDK rejects it and it cannot isolate users.
+2. Set server/edge secret only:
+   ```bash
+   COMPOSIO_API_KEY=ak_...
+   # optional: COMPOSIO_ENTITY_PREFIX=ozyman   # default → entity ozyman:<insforge_user_id>
+   ```
+3. Each signed-in user gets a **private** Composio entity `ozyman:<userId>`. They **Link** Gmail / GitHub / Slack in the Apps UI under that entity.
+4. Tools always execute with the project key + that user entity via `@composio/core` — **no CLI fallback** in project mode (CLI would run as the host machine’s accounts).
+5. Never set `COMPOSIO_DEFAULT_ENTITY_ID` in multi-user deploys (that seed shares one entity across users).
+
+**Local sole-operator only (not multi-user):**
+
+- `uak_…` or `COMPOSIO_FORCE_CLI=1` allows CLI execute + optional `COMPOSIO_DEFAULT_ENTITY_ID` with `COMPOSIO_ALLOW_SHARED_ENTITY=1`.
+- Prefer switching to a project key even for local once you care about realistic multi-user behavior.
 
 ### OpenRouter / AI setup
 
@@ -151,8 +163,11 @@ npx @insforge/cli ai setup
 | `OPENROUTER_API_KEY` | server/edge | yes for AI (or InsForge AI gateway via `ai setup`) | Direct OpenRouter key when not using project gateway |
 | `OPENROUTER_CHAT_MODEL` | server | optional | default `openai/gpt-4.1-mini` |
 | `OPENROUTER_EMBEDDING_MODEL` | server | later | e.g. `openai/text-embedding-3-small` |
-| `COMPOSIO_API_KEY` | server/edge | yes | Tool execute |
-| `COMPOSIO_DEFAULT_ENTITY_ID` | server | yes MVP | Best-effort seed sole operator entity |
+| `COMPOSIO_API_KEY` | server/edge | yes | Project key `ak_…` (not `uak_…`) for multi-user |
+| `COMPOSIO_ENTITY_PREFIX` | server | optional | Default `ozyman` → entity `ozyman:<userId>` |
+| `COMPOSIO_DEFAULT_ENTITY_ID` | server | local only | Shared seed — requires `COMPOSIO_ALLOW_SHARED_ENTITY=1` or user key |
+| `COMPOSIO_ALLOW_SHARED_ENTITY` | server | local only | `1` to allow shared CLI entity seed |
+| `COMPOSIO_FORCE_CLI` | server | local only | Force CLI tool path (never production) |
 | `CRON_SECRET` | edge + schedule header | yes | Brief / connection-health auth |
 | `MORNING_BRIEF_USER_ID` | edge | yes (n=1) | Primary user UUID |
 | `DIGEST_EMAIL_PROVIDER` | edge | yes | `resend` \| `insforge` |

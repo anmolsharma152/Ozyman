@@ -1,19 +1,91 @@
 import 'server-only'
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import {
+  isAuthKeyError,
+  runComposioCli,
+  shouldPreferComposioCli,
+} from './cli'
 import { getComposioClient } from './client'
 import type { ExecuteToolResult } from './types'
 
-const execFileAsync = promisify(execFile)
+function coerceData(raw: unknown): Record<string, unknown> | null {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>
+  }
+  if (raw != null) return { value: raw as unknown }
+  return null
+}
 
-function resolveComposioBin(): string {
-  const homeBin = join(homedir(), '.composio', 'composio')
-  if (existsSync(homeBin)) return homeBin
-  return 'composio'
+/**
+ * Composio CLI offloads large tool results to a temp file and only prints a
+ * pointer (`storedInFile` + `outputFilePath`). Without loading that file the
+ * app sees successful:true with empty data — which made Gmail look empty.
+ */
+async function hydrateCliPayload(parsed: {
+  successful?: boolean
+  data?: unknown
+  error?: string | null
+  storedInFile?: boolean
+  outputFilePath?: string
+}): Promise<{
+  successful: boolean
+  data: Record<string, unknown> | null
+  error: string | null
+}> {
+  let data = coerceData(parsed.data)
+  const path =
+    typeof parsed.outputFilePath === 'string' ? parsed.outputFilePath : null
+
+  if ((!data || Object.keys(data).length === 0) && path && existsSync(path)) {
+    try {
+      const fileText = await readFile(path, 'utf8')
+      const fileJson = JSON.parse(fileText) as {
+        successful?: boolean
+        data?: unknown
+        error?: string | null
+      }
+      // File is either full execute envelope or raw data object
+      if (fileJson && typeof fileJson === 'object') {
+        if ('data' in fileJson || 'successful' in fileJson) {
+          data = coerceData(fileJson.data)
+          if (fileJson.successful === false) {
+            return {
+              successful: false,
+              data,
+              error:
+                typeof fileJson.error === 'string'
+                  ? fileJson.error
+                  : 'Tool execution failed (file)',
+            }
+          }
+        } else {
+          data = coerceData(fileJson)
+        }
+      }
+    } catch (err) {
+      console.error('[composio/execute/cli] failed to load output file', path, err)
+      return {
+        successful: false,
+        data: null,
+        error: `CLI stored result at ${path} but file could not be read`,
+      }
+    }
+  }
+
+  const successful = Boolean(parsed.successful)
+  return {
+    successful,
+    data,
+    error: successful
+      ? null
+      : typeof parsed.error === 'string'
+        ? parsed.error
+        : parsed.error
+          ? String(parsed.error)
+          : 'Tool execution failed',
+  }
 }
 
 /**
@@ -24,23 +96,17 @@ async function executeViaCli(
   slug: string,
   args: Record<string, unknown>,
 ): Promise<ExecuteToolResult> {
-  const bin = resolveComposioBin()
   const dataArg = JSON.stringify(args ?? {})
   try {
-    const { stdout, stderr } = await execFileAsync(
-      bin,
+    const { stdout, stderr } = await runComposioCli(
       ['execute', slug, '-d', dataArg],
-      {
-        timeout: 90_000,
-        maxBuffer: 12 * 1024 * 1024,
-        env: process.env,
-      },
+      { timeoutMs: 90_000 },
     )
     if (stderr?.trim()) {
       console.warn('[composio/execute/cli] stderr', stderr.slice(0, 500))
     }
     const text = stdout.trim()
-    // CLI may print debug lines before JSON — take last JSON object
+    // CLI may print debug lines before JSON — take outermost JSON object
     const start = text.indexOf('{')
     const end = text.lastIndexOf('}')
     if (start < 0 || end < start) {
@@ -54,24 +120,10 @@ async function executeViaCli(
       successful?: boolean
       data?: unknown
       error?: string | null
+      storedInFile?: boolean
+      outputFilePath?: string
     }
-    const data =
-      parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)
-        ? (parsed.data as Record<string, unknown>)
-        : parsed.data != null
-          ? { value: parsed.data as unknown }
-          : null
-    return {
-      successful: Boolean(parsed.successful),
-      data,
-      error: parsed.successful
-        ? null
-        : typeof parsed.error === 'string'
-          ? parsed.error
-          : parsed.error
-            ? String(parsed.error)
-            : 'Tool execution failed',
-    }
+    return hydrateCliPayload(parsed)
   } catch (err) {
     console.error('[composio/execute/cli]', slug, err)
     const message = err instanceof Error ? err.message : 'CLI execute failed'
@@ -85,33 +137,21 @@ async function executeViaCli(
   }
 }
 
-function isAuthKeyError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return (
-    msg.includes('Invalid API key') ||
-    msg.includes('APIKey_InvalidAPIKey') ||
-    msg.includes('Unable to retrieve tool') ||
-    msg.includes('"code":801')
-  )
-}
-
 /**
  * Execute a Composio tool for a resolved entity (user_id in SDK terms).
  * Server-only — never call from client components.
  *
  * Strategy:
- * 1. Try @composio/core SDK (project keys)
- * 2. On auth/slug retrieval failure, fall back to local `composio execute`
- *    (works with CLI login + linked Gmail/GitHub)
+ * 1. Prefer CLI only for user keys (uak_*) / COMPOSIO_FORCE_CLI — local sole-operator
+ * 2. Project keys: SDK only, scoped to entityId (per-user). No CLI fallback
+ *    (CLI would execute as the host's linked accounts, not the end user).
  */
 export async function executeTool(
   slug: string,
   entityId: string,
   args: Record<string, unknown> = {},
 ): Promise<ExecuteToolResult> {
-  // Prefer CLI when key looks like a user API key (uak_) — SDK often rejects these
-  const apiKey = process.env.COMPOSIO_API_KEY?.trim() ?? ''
-  if (apiKey.startsWith('uak_') || process.env.COMPOSIO_FORCE_CLI === '1') {
+  if (shouldPreferComposioCli()) {
     return executeViaCli(slug, args)
   }
 
@@ -137,7 +177,13 @@ export async function executeTool(
           ? String(result.error)
           : null
 
-    if (!result.successful && errorMsg && isAuthKeyError(errorMsg)) {
+    // Project mode: never fall back to CLI (wrong tenant)
+    if (
+      !result.successful &&
+      errorMsg &&
+      isAuthKeyError(errorMsg) &&
+      shouldPreferComposioCli()
+    ) {
       console.warn('[composio/execute] SDK failed auth — trying CLI fallback')
       return executeViaCli(slug, args)
     }
@@ -149,7 +195,7 @@ export async function executeTool(
     }
   } catch (err) {
     console.error('[composio/execute]', slug, err)
-    if (isAuthKeyError(err)) {
+    if (isAuthKeyError(err) && shouldPreferComposioCli()) {
       console.warn('[composio/execute] SDK throw auth — trying CLI fallback')
       return executeViaCli(slug, args)
     }

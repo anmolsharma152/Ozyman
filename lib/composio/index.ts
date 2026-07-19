@@ -9,10 +9,21 @@ export {
   getComposioClient,
   // getComposioApiKey intentionally NOT re-exported — keep secret surface minimal
   isComposioConfigured,
+  isComposioProjectReady,
+  resetComposioClient,
 } from './client'
+export {
+  getComposioMode,
+  getComposioKeyKind,
+  isProjectKeyMode,
+  composioUserEntityId,
+  type ComposioKeyKind,
+  type ComposioModeInfo,
+} from './mode'
 export {
   resolveEntityId,
   persistEntityId,
+  ensureProjectEntityOnProfile,
   type EntityResolution,
 } from './entity'
 export { executeTool } from './execute'
@@ -26,6 +37,7 @@ export {
 export {
   getConnectionsSnapshot,
   linkToolkitForUser,
+  runToolkitSmokeForUser,
   runGithubSmokeForUser,
   publicErrorMessage,
   toolkitLabel,
@@ -36,6 +48,7 @@ export {
 export {
   MVP_TOOLKITS,
   TOOLKIT_LABELS,
+  TOOLKIT_SMOKE,
   GITHUB_SMOKE_SLUG,
   type MvpToolkit,
   type ConnectionStatus,

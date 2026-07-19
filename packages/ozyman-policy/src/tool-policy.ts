@@ -72,6 +72,12 @@ export const TOOL_POLICIES: readonly ToolPolicy[] = [
     modes: ['chat', 'brief'],
   },
   {
+    slug: 'GITHUB_FIND_PULL_REQUESTS',
+    defaultGate: 'allow',
+    risk: 'low',
+    modes: ['chat', 'brief'],
+  },
+  {
     slug: 'GITHUB_GET_A_PULL_REQUEST',
     defaultGate: 'allow',
     risk: 'low',
@@ -125,6 +131,7 @@ export const BRIEF_TOOL_SLUGS: readonly string[] = [
   'GITHUB_GET_THE_AUTHENTICATED_USER',
   'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER',
   'GITHUB_LIST_PULL_REQUESTS',
+  'GITHUB_FIND_PULL_REQUESTS',
   'GITHUB_GET_A_PULL_REQUEST',
 ] as const
 

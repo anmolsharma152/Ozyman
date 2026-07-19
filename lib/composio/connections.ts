@@ -3,6 +3,13 @@ import 'server-only'
 import { createInsForgeServerClient } from '@/app/lib/insforge/server'
 import { getComposioClient } from './client'
 import {
+  isAuthKeyError,
+  parseCliJsonObject,
+  runComposioCli,
+  scrubComposioError,
+  shouldPreferComposioCli,
+} from './cli'
+import {
   MVP_TOOLKITS,
   TOOLKIT_LABELS,
   type ConnectionStatus,
@@ -45,9 +52,116 @@ function emptyConnections(checkedAt: string | null): ToolkitConnection[] {
   }))
 }
 
+type CliAccountRow = {
+  status?: string
+  alias?: string | null
+  word_id?: string | null
+  id?: string | null
+}
+
+/**
+ * `composio connections list` → map of toolkit → account rows (ACTIVE preferred).
+ * Works with CLI session even when COMPOSIO_API_KEY is a uak_* user key.
+ */
+async function fetchConnectionsViaCli(
+  now: string,
+): Promise<ToolkitConnection[]> {
+  const base = emptyConnections(now)
+  const { stdout, stderr } = await runComposioCli(['connections', 'list'], {
+    timeoutMs: 45_000,
+  })
+  if (stderr?.trim()) {
+    console.warn('[composio/connections/cli] stderr', stderr.slice(0, 300))
+  }
+  const parsed = parseCliJsonObject(stdout) as Record<string, CliAccountRow[]>
+
+  return base.map((row) => {
+    const list = Array.isArray(parsed[row.toolkit])
+      ? parsed[row.toolkit]
+      : []
+    if (!list.length) return row
+
+    // Prefer ACTIVE when multiple accounts exist for the same toolkit
+    let best = list[0]
+    for (const item of list) {
+      if (mapComposioStatus(item.status) === 'active') {
+        best = item
+        break
+      }
+    }
+    const status = mapComposioStatus(best.status)
+    return {
+      ...row,
+      status,
+      composioAccountId: best.id ?? best.word_id ?? null,
+      alias: best.alias ?? null,
+      lastCheckedAt: now,
+      detail:
+        status === 'active'
+          ? null
+          : best.status
+            ? String(best.status)
+            : null,
+    }
+  })
+}
+
+async function fetchConnectionsViaSdk(
+  entityId: string,
+  now: string,
+): Promise<ToolkitConnection[]> {
+  const base = emptyConnections(now)
+  const composio = getComposioClient()
+  const response = await composio.connectedAccounts.list({
+    userIds: [entityId],
+    toolkitSlugs: [...MVP_TOOLKITS],
+  })
+
+  const items = response?.items ?? []
+  const byToolkit = new Map<string, (typeof items)[number]>()
+
+  for (const item of items) {
+    const slug = (
+      item.toolkit?.slug ||
+      (item as { toolkitSlug?: string }).toolkitSlug ||
+      ''
+    )
+      .toString()
+      .toLowerCase()
+    if (!slug) continue
+    const existing = byToolkit.get(slug)
+    if (!existing || mapComposioStatus(item.status) === 'active') {
+      byToolkit.set(slug, item)
+    }
+  }
+
+  return base.map((row) => {
+    const account = byToolkit.get(row.toolkit)
+    if (!account) return row
+
+    const status = mapComposioStatus(account.status)
+    return {
+      ...row,
+      status,
+      composioAccountId: account.id ?? null,
+      alias: (account as { alias?: string | null }).alias ?? null,
+      lastCheckedAt: now,
+      detail:
+        status === 'active'
+          ? null
+          : (account as { statusReason?: string | null }).statusReason ||
+            account.status ||
+            null,
+    }
+  })
+}
+
 /**
  * Live status from Composio for the given entity (user_id).
  * Does not require DB — safe when connections table is not applied yet.
+ *
+ * User API keys (uak_*) fail the SDK with 401 — fall back to
+ * `composio connections list` (same session as tool execute CLI fallback).
  */
 export async function fetchLiveConnectionStatus(
   entityId: string,
@@ -55,55 +169,49 @@ export async function fetchLiveConnectionStatus(
   const now = new Date().toISOString()
   const base = emptyConnections(now)
 
-  try {
-    const composio = getComposioClient()
-    const response = await composio.connectedAccounts.list({
-      userIds: [entityId],
-      toolkitSlugs: [...MVP_TOOLKITS],
-    })
-
-    const items = response?.items ?? []
-    const byToolkit = new Map<string, (typeof items)[number]>()
-
-    for (const item of items) {
-      const slug = (
-        item.toolkit?.slug ||
-        (item as { toolkitSlug?: string }).toolkitSlug ||
-        ''
+  if (shouldPreferComposioCli()) {
+    try {
+      return await fetchConnectionsViaCli(now)
+    } catch (err) {
+      const message = scrubComposioError(
+        err instanceof Error ? err.message : String(err),
       )
-        .toString()
-        .toLowerCase()
-      if (!slug) continue
-      // Prefer ACTIVE over others when multiple accounts exist
-      const existing = byToolkit.get(slug)
-      if (!existing || mapComposioStatus(item.status) === 'active') {
-        byToolkit.set(slug, item)
+      console.error('[composio/connections] CLI list failed', message)
+      return base.map((row) => ({
+        ...row,
+        status: 'error' as const,
+        detail: `CLI: ${message}`,
+        lastCheckedAt: now,
+      }))
+    }
+  }
+
+  try {
+    return await fetchConnectionsViaSdk(entityId, now)
+  } catch (err) {
+    const message = scrubComposioError(
+      err instanceof Error ? err.message : String(err),
+    )
+    // Only fall back to CLI for user-key local mode — never for project multi-user
+    if (isAuthKeyError(err) && shouldPreferComposioCli()) {
+      console.warn(
+        '[composio/connections] SDK list auth failed — trying CLI fallback',
+      )
+      try {
+        return await fetchConnectionsViaCli(now)
+      } catch (cliErr) {
+        const cliMsg = scrubComposioError(
+          cliErr instanceof Error ? cliErr.message : String(cliErr),
+        )
+        console.error('[composio/connections] CLI fallback failed', cliMsg)
+        return base.map((row) => ({
+          ...row,
+          status: 'error' as const,
+          detail: `Auth/CLI: ${cliMsg}`,
+          lastCheckedAt: now,
+        }))
       }
     }
-
-    return base.map((row) => {
-      const account = byToolkit.get(row.toolkit)
-      if (!account) return row
-
-      const status = mapComposioStatus(account.status)
-      return {
-        ...row,
-        status,
-        composioAccountId: account.id ?? null,
-        alias:
-          (account as { alias?: string | null }).alias ??
-          null,
-        lastCheckedAt: now,
-        detail:
-          status === 'active'
-            ? null
-            : (account as { statusReason?: string | null }).statusReason ||
-              account.status ||
-              null,
-      }
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
     console.error('[composio/connections] list failed', message)
     return base.map((row) => ({
       ...row,
