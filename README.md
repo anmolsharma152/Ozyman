@@ -7,6 +7,7 @@ Personal Operator OS — a private career + life operator buddy on **InsForge** 
 | **Project** | `ozyman` |
 | **API** | `https://sik8rdbp.ap-southeast.insforge.app` |
 | **Design** | [docs/design-ozyman-personal-operator-os.md](./docs/design-ozyman-personal-operator-os.md) |
+| **Portfolio boundaries** | [docs/portfolio-product-boundaries.md](./docs/portfolio-product-boundaries.md) — Ozyman ≠ Disha ≠ Scholar-Loop ≠ IdeaForge (`~/Projects/IdeaForge`) |
 | **Setup / secrets** | [docs/setup.md](./docs/setup.md) |
 | **Env template** | [`.env.example`](./.env.example) |
 
@@ -56,8 +57,8 @@ Requires a linked project (`.insforge/project.json` via `npx @insforge/cli link`
 | | |
 |--|--|
 | **UI** | [`/connections`](./app/connections) — Gmail / GitHub / Slack status, re-link, Verify GitHub smoke |
-| **Server client** | [`lib/composio/*`](./lib/composio) — `COMPOSIO_API_KEY` only (never `NEXT_PUBLIC_*`) |
-| **Entity** | `profiles.composio_entity_id` ← seed `COMPOSIO_DEFAULT_ENTITY_ID` or user id (KD 17) |
+| **Server client** | [`lib/composio/*`](./lib/composio) — **project** `COMPOSIO_API_KEY` (`ak_…`, never `uak_…` / never `NEXT_PUBLIC_*`) |
+| **Entity** | Multi-user: `ozyman:<userId>` per signed-in user; link apps in UI (KD 17) |
 | **APIs** | `GET /api/connections/status`, `POST /api/connections/[toolkit]/link`, `POST /api/connections/smoke` |
 | **Mirror** | `public.connections` — toolkit status only (no provider tokens) |
 

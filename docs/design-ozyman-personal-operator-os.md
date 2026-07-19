@@ -56,10 +56,11 @@ Personal operator workflows are fragmented across Gmail, GitHub, Slack, LinkedIn
 
 ### Product thesis
 
-> **Ozyman** = operator buddy / career sidekick (email ops, GH, tasks, job search with guardrails, morning + evening check-ins).  
-> **Scholar-Loop** = learning companion (FSRS / study digests).  
-> Personality model inspired by KickerAI; domain is **ops + career**, not primary health.  
-> Integrate later via deep-link/skill only — never one monolith in v1.
+> **Ozyman** = operator buddy (email ops, GH, tasks, morning/evening Top-3 kicks, confirm-gated actions).  
+> **Not** job-market intelligence (**Disha** · `~/Projects/Disha`), **not** FSRS digests (**Scholar-Loop** · `~/Projects/Scholar-Loop`), **not** creative synthesis (**IdeaForge** · `~/Projects/IdeaForge`).  
+> Personality model inspired by KickerAI; domain is **ops + career-sidekick**, not health and not job-board search.  
+> Integrate siblings via deep-link/export only — never one monolith.  
+> **Canonical split:** [portfolio-product-boundaries.md](./portfolio-product-boundaries.md) (same file in all four project `docs/` folders).
 
 ---
 
