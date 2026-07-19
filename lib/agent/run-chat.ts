@@ -7,6 +7,10 @@ import 'server-only'
 import { ensureProfile } from '@/lib/profile/ensureProfile'
 import { resolveEntityId } from '@/lib/composio/entity'
 import { executeTool } from '@/lib/composio/execute'
+import {
+  normalizeToolData,
+  summarizeNormalized,
+} from '@/lib/composio/normalize'
 import { runAgentLoop } from './loop'
 import {
   createAgentPersist,
@@ -112,17 +116,18 @@ export async function runChatTurn(input: ChatRunInput): Promise<ChatRunOutput> {
             error: exec.error ?? 'Tool failed',
           }
         }
-        // Truncate for model + storage
-        const payload = exec.data ?? {}
+        // Slim bulky Gmail/GitHub payloads so counts + subjects survive clipping
+        const payload = normalizeToolData(slug, exec.data) ?? {}
         const json = JSON.stringify(payload)
-        const clipped =
-          json.length > 12000 ? `${json.slice(0, 12000)}…` : json
+        const preview =
+          json.length > 10000 ? `${json.slice(0, 10000)}…` : json
         return {
           ok: true,
-          summary: clipped.slice(0, 500),
+          summary: summarizeNormalized(slug, payload).slice(0, 500),
           resultRef: {
-            preview: clipped.slice(0, 4000),
+            preview,
             bytes: json.length,
+            slug,
           },
         }
       },
@@ -136,10 +141,6 @@ export async function runChatTurn(input: ChatRunInput): Promise<ChatRunOutput> {
       maxSteps: 10,
     },
   )
-
-  // Feed richer tool results to the model is already in the loop via summary.
-  // For better answers, patch: tool message should include resultRef.preview.
-  // The loop currently only sends summary — enhance toolMessage in a follow-up if needed.
 
   const assistantMessage =
     result.outputSummary ||

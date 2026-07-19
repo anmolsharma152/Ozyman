@@ -42,6 +42,7 @@ export async function POST(request: Request) {
       payload: result.payload,
       artifactId: result.artifactId,
       threadId: result.threadId,
+      taskIds: result.taskIds,
     })
   } catch (err) {
     console.error('[api/brief/run]', err)

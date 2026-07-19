@@ -15,13 +15,14 @@ const TOOL_SCHEMAS: Record<string, ChatToolDefinition> = {
     function: {
       name: 'GMAIL_FETCH_EMAILS',
       description:
-        'Fetch recent Gmail messages. Use query for Gmail search (e.g. is:unread, from:x). Prefer max_results 5–15.',
+        'Fetch Gmail messages. ALWAYS pass a query. Prefer is:unread or in:inbox newer_than:7d first — do NOT require both unread AND important unless the user asked for important only. Response includes returned_count + resultSizeEstimate (total matches); report both. Prefer max_results 8–15, verbose=false.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: 'Gmail advanced search query (optional)',
+            description:
+              'Gmail search. Examples: is:unread, in:inbox newer_than:7d, is:important, is:starred, from:x. Avoid stacking is:unread is:important unless asked.',
           },
           max_results: {
             type: 'integer',
@@ -34,7 +35,7 @@ const TOOL_SCHEMAS: Record<string, ChatToolDefinition> = {
           },
           verbose: {
             type: 'boolean',
-            description: 'If false, faster metadata-only fetch',
+            description: 'Prefer false for metadata (faster, smaller)',
           },
         },
       },
@@ -114,16 +115,59 @@ const TOOL_SCHEMAS: Record<string, ChatToolDefinition> = {
     type: 'function',
     function: {
       name: 'GITHUB_LIST_PULL_REQUESTS',
-      description: 'List pull requests for owner/repo. Requires owner and repo.',
+      description:
+        'List pull requests for one owner/repo. Default interest is state=open. Response includes open_count_in_page / closed_count_in_page. If open is empty, you may also call state=all or state=closed and clearly say how many are closed/merged vs open — never call closed PRs open. For cross-repo open PRs use GITHUB_FIND_PULL_REQUESTS.',
       parameters: {
         type: 'object',
         properties: {
           owner: { type: 'string' },
           repo: { type: 'string' },
-          state: { type: 'string', description: 'open | closed | all' },
+          state: {
+            type: 'string',
+            description: 'open | closed | all (default open on API if omitted)',
+          },
           per_page: { type: 'integer' },
         },
         required: ['owner', 'repo'],
+      },
+    },
+  },
+  GITHUB_FIND_PULL_REQUESTS: {
+    type: 'function',
+    function: {
+      name: 'GITHUB_FIND_PULL_REQUESTS',
+      description:
+        'Search pull requests across repos. For "my open PRs": state=open, for_authenticated_user=true (and/or author=@me). Report open vs closed clearly using returned counts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          owner: { type: 'string', description: 'Optional owner filter' },
+          repo: {
+            type: 'string',
+            description: "Optional repo or 'owner/repo'",
+          },
+          author: {
+            type: 'string',
+            description: 'PR author login (or leave empty with for_authenticated_user)',
+          },
+          state: {
+            type: 'string',
+            description: 'open | closed | all',
+          },
+          for_authenticated_user: {
+            type: 'boolean',
+            description:
+              'true to include private repos / PRs involving the authenticated user',
+          },
+          query: {
+            type: 'string',
+            description: 'Extra GitHub search text/qualifiers',
+          },
+          sort: { type: 'string' },
+          order: { type: 'string' },
+          per_page: { type: 'integer' },
+          page: { type: 'integer' },
+        },
       },
     },
   },
