@@ -1,14 +1,15 @@
 'use server'
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createAuthActions } from '@insforge/sdk/ssr'
 
 /**
  * Public app origin for OAuth redirectTo.
- * Production requires NEXT_PUBLIC_APP_URL so the provider never bounces to localhost.
+ * Prefer NEXT_PUBLIC_APP_URL; in dev fall back to the request Host so any
+ * local port (3000, 3456, …) works without misrouting the callback.
  */
-function appOrigin(): string {
+async function appOrigin(): Promise<string> {
   const raw = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
   if (raw) return raw
 
@@ -18,6 +19,15 @@ function appOrigin(): string {
     )
   }
 
+  try {
+    const h = await headers()
+    const host = h.get('x-forwarded-host') ?? h.get('host')
+    const proto = h.get('x-forwarded-proto') ?? 'http'
+    if (host) return `${proto}://${host}`
+  } catch {
+    // headers() unavailable outside a request — fall through
+  }
+
   return 'http://localhost:3000'
 }
 
@@ -25,7 +35,7 @@ function appOrigin(): string {
 export async function signInWithGoogle() {
   let origin: string
   try {
-    origin = appOrigin()
+    origin = await appOrigin()
   } catch (err) {
     console.error('OAuth misconfigured', err)
     redirect('/login?error=misconfigured')
