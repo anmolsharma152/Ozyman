@@ -53,7 +53,7 @@ export function HomeGreeting({ user }: HomeGreetingProps) {
       </h1>
       <p className="max-w-prose text-base leading-relaxed text-shell-muted">
         {user
-          ? "I'm in your corner. Here's what actually matters today — once we have a brief."
+          ? "I'm in your corner. Top 3 kicks below — refresh the brief or jump into chat anytime."
           : 'Your private career + life operator buddy. Sign in and I’ll prioritize the Top 3 kicks that matter.'}
       </p>
       {!user ? (

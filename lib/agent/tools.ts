@@ -157,6 +157,25 @@ const TOOL_SCHEMAS: Record<string, ChatToolDefinition> = {
       },
     },
   },
+  GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER: {
+    type: 'function',
+    function: {
+      name: 'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER',
+      description: 'List repositories for the authenticated GitHub user.',
+      parameters: {
+        type: 'object',
+        properties: {
+          per_page: { type: 'integer' },
+          sort: { type: 'string', description: 'updated | created | pushed | full_name' },
+          affiliation: {
+            type: 'string',
+            description: 'owner,collaborator,organization_member',
+          },
+          type: { type: 'string' },
+        },
+      },
+    },
+  },
   SLACK_FIND_CHANNELS: {
     type: 'function',
     function: {

@@ -83,6 +83,12 @@ export const TOOL_POLICIES: readonly ToolPolicy[] = [
     risk: 'low',
     modes: ['chat'],
   },
+  {
+    slug: 'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER',
+    defaultGate: 'allow',
+    risk: 'low',
+    modes: ['chat', 'brief'],
+  },
   // --- GitHub write (chat only, gated) ---
   {
     slug: 'GITHUB_CREATE_AN_ISSUE_COMMENT',
@@ -117,6 +123,7 @@ export const BRIEF_TOOL_SLUGS: readonly string[] = [
   'GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID',
   'GMAIL_LIST_LABELS',
   'GITHUB_GET_THE_AUTHENTICATED_USER',
+  'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER',
   'GITHUB_LIST_PULL_REQUESTS',
   'GITHUB_GET_A_PULL_REQUEST',
 ] as const
