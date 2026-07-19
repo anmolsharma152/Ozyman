@@ -56,7 +56,7 @@ export function LoginForm({ errorCode }: LoginFormProps) {
           setOauthPending(true)
         }}
       >
-        <button type="submit" className="btn-primary" disabled={busy}>
+        <button type="submit" className="btn-primary w-full" disabled={busy}>
           <GoogleIcon />
           {oauthPending ? 'Redirecting to Google…' : 'Continue with Google'}
         </button>

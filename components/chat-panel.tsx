@@ -13,6 +13,13 @@ type PendingConfirm = {
   preview: Record<string, unknown>
 }
 
+type RunResult = {
+  threadId?: string
+  assistantMessage?: string
+  pendingToolRunId?: string | null
+  status?: string
+}
+
 type ChatPanelProps = {
   initialThreadId?: string | null
 }
@@ -26,18 +33,25 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
   const [pending, setPending] = useState<PendingConfirm | null>(null)
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const busyRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, statusLine, pending])
 
+  const setBusySafe = (v: boolean) => {
+    busyRef.current = v
+    setBusy(v)
+  }
+
   const send = useCallback(async () => {
     const text = input.trim()
-    if (!text || busy) return
+    if (!text || busyRef.current) return
 
     setError(null)
     setInput('')
-    setBusy(true)
+    setBusySafe(true)
     setStatusLine('Thinking…')
     setPending(null)
 
@@ -48,6 +62,12 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
     }
     setMessages((m) => [...m, userMsg])
 
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+    // Hard cap so UI never sticks forever
+    const kill = window.setTimeout(() => ac.abort(), 120_000)
+
     try {
       const res = await fetch('/api/agent/run', {
         method: 'POST',
@@ -57,26 +77,47 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
           threadId,
           stream: true,
         }),
+        signal: ac.signal,
       })
 
-      if (!res.ok || !res.body) {
-        const j = (await res.json().catch(() => null)) as {
+      if (!res.ok) {
+        let errMsg = `Request failed (${res.status})`
+        try {
+          const j = (await res.json()) as { error?: string }
+          if (j?.error) errMsg = j.error
+        } catch {
+          /* ignore */
+        }
+        throw new Error(errMsg)
+      }
+
+      if (!res.body) {
+        // Fallback: some proxies strip stream bodies
+        const j = (await res.json()) as {
+          assistantMessage?: string
+          threadId?: string
           error?: string
-        } | null
-        throw new Error(j?.error ?? `Request failed (${res.status})`)
+          pendingToolRunId?: string | null
+        }
+        if (j.error) throw new Error(j.error)
+        if (j.threadId) setThreadId(j.threadId)
+        setMessages((m) => [
+          ...m,
+          {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            content: j.assistantMessage || '…',
+          },
+        ])
+        return
       }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
       let assistantDraft = ''
-      type RunResult = {
-        threadId?: string
-        assistantMessage?: string
-        pendingToolRunId?: string | null
-        status?: string
-      }
       let lastResult: RunResult | null = null
+      let sawError: string | null = null
 
       while (true) {
         const { done, value } = await reader.read()
@@ -86,14 +127,11 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
         buffer = chunks.pop() ?? ''
 
         for (const chunk of chunks) {
-          const line = chunk
-            .split('\n')
-            .find((l) => l.startsWith('data: '))
+          const line = chunk.split('\n').find((l) => l.startsWith('data: '))
           if (!line) continue
-          const raw = line.slice(6)
           let event: Record<string, unknown>
           try {
-            event = JSON.parse(raw) as Record<string, unknown>
+            event = JSON.parse(line.slice(6)) as Record<string, unknown>
           } catch {
             continue
           }
@@ -117,7 +155,8 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
             })
             setStatusLine('Needs your OK')
           } else if (type === 'error') {
-            setError(String(event.message ?? 'Something went wrong'))
+            sawError = String(event.message ?? 'Something went wrong')
+            setError(sawError)
           } else if (type === 'result') {
             lastResult = (event.data ?? null) as RunResult | null
           } else if (type === 'done') {
@@ -133,6 +172,7 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
       const finalText =
         lastResult?.assistantMessage ||
         assistantDraft ||
+        sawError ||
         '…'
 
       setMessages((m) => [
@@ -144,26 +184,39 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
         },
       ])
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Chat failed'
-      setError(msg)
-      setMessages((m) => [
-        ...m,
-        {
-          id: `e-${Date.now()}`,
-          role: 'assistant',
-          content: `Hmm — ${msg}`,
-        },
-      ])
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Timed out or cancelled — try a shorter question.')
+        setMessages((m) => [
+          ...m,
+          {
+            id: `e-${Date.now()}`,
+            role: 'assistant',
+            content: 'That took too long — try again with a shorter ask.',
+          },
+        ])
+      } else {
+        const msg = err instanceof Error ? err.message : 'Chat failed'
+        setError(msg)
+        setMessages((m) => [
+          ...m,
+          {
+            id: `e-${Date.now()}`,
+            role: 'assistant',
+            content: `Hmm — ${msg}`,
+          },
+        ])
+      }
     } finally {
-      setBusy(false)
+      window.clearTimeout(kill)
+      setBusySafe(false)
       setStatusLine(null)
     }
-  }, [busy, input, threadId])
+  }, [input, threadId])
 
   const decide = useCallback(
     async (decision: 'confirm' | 'reject') => {
-      if (!pending || busy) return
-      setBusy(true)
+      if (!pending || busyRef.current) return
+      setBusySafe(true)
       setError(null)
       try {
         const res = await fetch('/api/agent/confirm', {
@@ -199,16 +252,16 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Confirm failed')
       } finally {
-        setBusy(false)
+        setBusySafe(false)
       }
     },
-    [busy, pending],
+    [pending],
   )
 
   return (
     <div className="flex min-h-[70dvh] flex-1 flex-col gap-3">
-      <div className="card flex flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
-        <div className="flex-1 space-y-3 overflow-y-auto px-1 py-2">
+      <div className="card flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
+        <div className="min-h-[12rem] flex-1 space-y-3 overflow-y-auto px-1 py-2">
           {messages.length === 0 ? (
             <div className="space-y-2 px-2 py-6 text-sm text-shell-muted">
               <p className="text-base font-medium text-shell-fg">
@@ -218,7 +271,7 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
               <ul className="list-inside list-disc space-y-1">
                 <li>“What’s unread and important in Gmail?”</li>
                 <li>“Who am I on GitHub?”</li>
-                <li>“List open PRs on owner/repo”</li>
+                <li>“List open PRs on anmolsharma152/Ozyman”</li>
               </ul>
               <p className="pt-2 text-xs">
                 Connect Gmail/GitHub under Apps first. Sends need your OK.
@@ -244,7 +297,7 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
             ))
           )}
           {statusLine ? (
-            <p className="px-2 text-xs text-shell-muted animate-pulse">
+            <p className="animate-pulse px-2 text-xs text-shell-muted">
               {statusLine}
             </p>
           ) : null}
@@ -286,8 +339,9 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
           </p>
         ) : null}
 
+        {/* Composer — button must NOT use w-full (btn-primary no longer forces it) */}
         <form
-          className="flex gap-2"
+          className="flex w-full items-stretch gap-2"
           onSubmit={(e) => {
             e.preventDefault()
             void send()
@@ -298,12 +352,14 @@ export function ChatPanel({ initialThreadId = null }: ChatPanelProps) {
             onChange={(e) => setInput(e.target.value)}
             disabled={busy}
             placeholder="Message Ozyman…"
-            className="min-h-12 flex-1 rounded-2xl border border-shell-border bg-shell-bg px-4 text-base text-shell-fg outline-none ring-shell-accent/40 placeholder:text-shell-muted/60 focus:ring-2 disabled:opacity-60"
+            autoComplete="off"
+            className="min-h-12 min-w-0 flex-1 rounded-2xl border border-shell-border bg-shell-bg px-4 text-base text-shell-fg outline-none ring-shell-accent/40 placeholder:text-shell-muted/60 focus:ring-2 disabled:opacity-60"
           />
           <button
             type="submit"
-            className="btn-primary min-h-12 shrink-0 px-5"
+            className="btn-primary min-h-12 w-auto shrink-0 px-5"
             disabled={busy || !input.trim()}
+            aria-label="Send message"
           >
             {busy ? '…' : 'Send'}
           </button>

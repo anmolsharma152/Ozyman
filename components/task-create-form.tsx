@@ -67,7 +67,7 @@ export function TaskCreateForm() {
         </p>
       ) : null}
 
-      <button type="submit" className="btn-primary" disabled={pending}>
+      <button type="submit" className="btn-primary w-full" disabled={pending}>
         {pending ? 'Saving…' : 'Add task'}
       </button>
     </form>

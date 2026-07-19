@@ -29,17 +29,23 @@ body {
 /* Large tap targets for companion feel */
 @layer components {
   .btn-primary {
-    @apply inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl
       bg-shell-accent px-5 py-3 text-base font-semibold text-shell-bg
       transition hover:bg-shell-accentDim active:scale-[0.98]
       disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Full-width primary (forms, stacked CTAs) */
+  .btn-primary-block {
+    @apply btn-primary w-full;
   }
 
   .btn-ghost {
     @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl
       border border-shell-border bg-shell-surface/60 px-4 py-2.5 text-sm
       font-medium text-shell-fg transition hover:border-shell-muted
-      hover:bg-shell-card active:scale-[0.98];
+      hover:bg-shell-card active:scale-[0.98]
+      disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .card {
