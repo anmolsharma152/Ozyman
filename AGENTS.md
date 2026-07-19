@@ -1,5 +1,22 @@
 # AGENTS.md
 
+Guidance for coding agents working in **Ozyman**.
+
+## Product scope (do not expand casually)
+
+Ozyman is a **private operator buddy**: Gmail, GitHub, tasks, Top-3 kicks, chat + tools, confirm before send.
+
+**Out of scope here** (other repos):
+
+| Domain | Product |
+|--------|---------|
+| Job scrape / LPA scoring | Disha |
+| FSRS / study digests | Scholar-Loop |
+| Creative diverge–evaluate idea OS | IdeaForge |
+
+Canonical split: [docs/portfolio-product-boundaries.md](./docs/portfolio-product-boundaries.md).  
+Resume handoff: [docs/STATUS.md](./docs/STATUS.md).
+
 <!-- INSFORGE:START -->
 ## InsForge backend
 
@@ -20,3 +37,29 @@ Key patterns:
 - Reference users with `auth.users(id)`; use `auth.uid()` in RLS policies.
 - For storage uploads, persist both the returned `url` and `key`.
 <!-- INSFORGE:END -->
+
+## Composio
+
+- Prefer **project API key** (`ak_…`) for multi-user / cloud (`lib/composio/mode.ts`).
+- User keys (`uak_…`) force local CLI execute only — not for production multi-user.
+- Large CLI results may offload to temp files — `execute.ts` must hydrate `outputFilePath`.
+- Slim payloads for the model via `lib/composio/normalize.ts`.
+- Per-user entity in project mode: `ozyman:<userId>` (`lib/composio/entity.ts`).
+
+## Important paths
+
+| Area | Path |
+|------|------|
+| Agent loop / chat | `lib/agent/*`, `app/api/agent/*`, `app/chat` |
+| Morning brief | `lib/brief/run-morning-brief.ts`, `app/api/brief/run` |
+| Composio | `lib/composio/*` |
+| Settings / apps UI | `app/settings`, `components/connections-panel.tsx` |
+| Policy | `packages/ozyman-policy` |
+| Profile | `lib/profile/ensureProfile.ts` (soft-timeout on InsForge) |
+
+## Engineering norms
+
+- Atomic commits; never commit secrets.
+- Soft-fail tools in brief/chat when possible; don’t invent empty inboxes or open PRs.
+- Confirm before irreversible tool runs (send email, etc.).
+- Prefer read_file / search_replace; keep changes scoped to the request.

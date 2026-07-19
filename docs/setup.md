@@ -1,9 +1,11 @@
 # Ozyman setup — env matrix, secrets, providers
 
 Personal Operator OS on **InsForge** (ap-southeast) + **Composio**.  
-Full product design: [design-ozyman-personal-operator-os.md](./design-ozyman-personal-operator-os.md).
+Full product design: [design-ozyman-personal-operator-os.md](./design-ozyman-personal-operator-os.md).  
+**Current handoff / what works:** [STATUS.md](./STATUS.md).  
+**Portfolio split:** [portfolio-product-boundaries.md](./portfolio-product-boundaries.md).
 
-This doc is the **PR-00 bootstrap checklist**: env vars, secrets placement, Resend-first digests, Composio entity seed, and OpenRouter AI setup. **No app runtime** is required yet.
+This doc is the env/secrets/bootstrap checklist for local Next and edge secrets.
 
 ---
 

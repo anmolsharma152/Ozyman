@@ -1,72 +1,95 @@
 # Ozyman
 
-Personal Operator OS — a private career + life operator buddy on **InsForge** + **Composio**.
+**Personal Operator OS** — a private career + life **operator buddy**: Gmail, GitHub, tasks, Top-3 kicks, chat with tools, confirm before irreversible actions.
 
 | | |
 |--|--|
-| **Project** | `ozyman` |
-| **API** | `https://sik8rdbp.ap-southeast.insforge.app` |
-| **Design** | [docs/design-ozyman-personal-operator-os.md](./docs/design-ozyman-personal-operator-os.md) |
-| **Portfolio boundaries** | [docs/portfolio-product-boundaries.md](./docs/portfolio-product-boundaries.md) — Ozyman ≠ Disha ≠ Scholar-Loop ≠ IdeaForge (`~/Projects/IdeaForge`) |
-| **Setup / secrets** | [docs/setup.md](./docs/setup.md) |
-| **Env template** | [`.env.example`](./.env.example) |
+| **Product** | Operate *today* in accounts you already have |
+| **Not this** | Job boards (**Disha**), FSRS study (**Scholar-Loop**), creative ideation (**IdeaForge**) |
+| **Stack** | Next.js 15 · InsForge (auth/Postgres) · Composio · OpenRouter |
+| **InsForge project** | `ozyman` · ap-southeast · `https://sik8rdbp.ap-southeast.insforge.app` |
+
+## Docs (start here)
+
+| Doc | Purpose |
+|-----|---------|
+| **[docs/STATUS.md](./docs/STATUS.md)** | **Handoff** — what works, known gaps, resume checklist |
+| [docs/portfolio-product-boundaries.md](./docs/portfolio-product-boundaries.md) | Ozyman vs Disha vs Scholar-Loop vs IdeaForge |
+| [docs/design-ozyman-personal-operator-os.md](./docs/design-ozyman-personal-operator-os.md) | Full design (architecture, schema, PR plan) |
+| [docs/setup.md](./docs/setup.md) | Env matrix, secrets, Composio project key, migrations |
+| [`.env.example`](./.env.example) | Env template (copy to `.env.local`) |
+| [AGENTS.md](./AGENTS.md) | Guidance for coding agents |
 
 ## Quick start
 
 ```bash
 cp .env.example .env.local
-# Set NEXT_PUBLIC_INSFORGE_ANON_KEY (and other secrets as needed)
-# See docs/setup.md for Resend-first digests, Composio entity seed, ai setup
+# Fill NEXT_PUBLIC_INSFORGE_*, OPENROUTER_*, COMPOSIO_API_KEY (prefer ak_ project key)
+# See docs/setup.md
 
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Sign in with **Google OAuth** (preferred) or email/password if configured on the InsForge project.
-
-### Scripts
+Open [http://localhost:3000](http://localhost:3000). Sign in with **Google OAuth** (preferred).
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | Local Next.js dev server |
+| `npm run dev` | Local Next.js (default port 3000) |
 | `npm run build` | Production build |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm start` | Serve production build |
 
-### Database migrations
+## App map
 
-SQL lives under [`migrations/`](./migrations/) (InsForge CLI format: `<timestamp>_<kebab-name>.sql`).
+| Route | What |
+|-------|------|
+| `/` | Home — greeting + **Top 3 Kicks** (Generate/Refresh) |
+| `/chat` | Companion chat + tools + confirm UI |
+| `/tasks` | Open / proposed tasks |
+| `/settings` | Account, sign out, connected apps, **Manage apps** (Link/Verify) |
+| `/connections` | Redirects → `/settings` |
 
-```bash
-# Preferred: apply pending migrations on the linked project
-npx @insforge/cli db migrations up --all
+## Architecture (short)
 
-# Or create a new empty migration file
-npx @insforge/cli db migrations new <name>
-
-# One-shot import of a raw SQL file (if not using the migrations tracker)
-npx @insforge/cli db import migrations/20260718181853_profiles-threads-messages.sql
-npx @insforge/cli db import migrations/20260718182641_connections.sql
+```text
+Next.js App Router
+  ├─ InsForge SSR auth + Postgres (profiles, threads, messages, tasks, …)
+  ├─ OpenRouter chat / brief LLM
+  └─ Composio tools (Gmail, GitHub, Slack)
+       ak_ project key → per-user entity ozyman:<userId>
+       uak_ user key   → local CLI only (not multi-user)
 ```
 
-Requires a linked project (`.insforge/project.json` via `npx @insforge/cli link`).  
-`ensureProfile` runs on every authenticated layout load and seeds `profiles.digest_email` / `composio_entity_id` when null.
-
-### Composio connections (PR-05)
+## Composio
 
 | | |
 |--|--|
-| **UI** | [`/connections`](./app/connections) — Gmail / GitHub / Slack status, re-link, Verify GitHub smoke |
-| **Server client** | [`lib/composio/*`](./lib/composio) — **project** `COMPOSIO_API_KEY` (`ak_…`, never `uak_…` / never `NEXT_PUBLIC_*`) |
-| **Entity** | Multi-user: `ozyman:<userId>` per signed-in user; link apps in UI (KD 17) |
-| **APIs** | `GET /api/connections/status`, `POST /api/connections/[toolkit]/link`, `POST /api/connections/smoke` |
-| **Mirror** | `public.connections` — toolkit status only (no provider tokens) |
+| **UI** | Settings → Manage apps |
+| **Code** | `lib/composio/*` |
+| **Key** | Project `ak_…` for multi-user/cloud; never `NEXT_PUBLIC_*` |
+| **Entity** | `ozyman:<insforge_user_id>` in project mode (KD 17) |
 
-Smoke: `GITHUB_GET_THE_AUTHENTICATED_USER`. On failure the UI forces re-link (supported path).
+## Database
 
-Agent loop, morning brief, and chat land in later PRs.
+SQL under [`migrations/`](./migrations/):
+
+```bash
+npx @insforge/cli db migrations up --all
+```
+
+Requires linked project (`.insforge/project.json` — gitignored).
 
 ## Do not commit
 
-- Any `.env*` file except `.env.example` (real API keys stay in `.env.local` / InsForge secrets)
-- `.insforge/` (CLI / project credentials)
+- Any `.env*` except `.env.example`
+- `.insforge/` (CLI credentials)
+- Live API keys
+
+## Sibling projects
+
+| Repo | Role |
+|------|------|
+| `~/Projects/Disha` | Job market intelligence |
+| `~/Projects/Scholar-Loop` | FSRS learn/quiz digests |
+| `~/Projects/IdeaForge` | Creative synthesis (scaffold) |
