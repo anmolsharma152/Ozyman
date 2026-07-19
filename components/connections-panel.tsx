@@ -305,7 +305,7 @@ export function ConnectionsPanel({ initial, linkedNotice = null }: Props) {
         <div className="flex flex-col gap-2 border-t border-shell-border/60 pt-4">
           <button
             type="button"
-            className="btn-primary"
+            className="btn-primary w-full"
             disabled={smokePending || isPending}
             onClick={onVerifyGithub}
           >
