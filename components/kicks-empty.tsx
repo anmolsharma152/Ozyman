@@ -1,5 +1,8 @@
+import Link from 'next/link'
+
 /**
- * Pre-first-brief empty state — never invent fake Top-3 kicks (design § Home empty states).
+ * Pre-first-brief empty state — never invent fake Top-3 kicks.
+ * Chat is the active path until morning brief ships.
  */
 export function KicksEmpty() {
   return (
@@ -10,7 +13,7 @@ export function KicksEmpty() {
             Today&apos;s Top 3 Kicks
           </h2>
           <p className="mt-1 text-sm text-shell-muted">
-            Kicks appear after your first morning brief.
+            Morning briefs will land here. For now, ask in chat.
           </p>
         </div>
         <span
@@ -35,9 +38,12 @@ export function KicksEmpty() {
         ))}
       </ul>
 
+      <Link href="/chat" className="btn-primary inline-flex w-full justify-center">
+        Chat with Ozyman
+      </Link>
+
       <p className="text-xs leading-relaxed text-shell-muted/80">
-        Connect apps and wait for the morning check-in — or run a brief when that
-        lands. No fake priorities here.
+        Connect Gmail &amp; GitHub under Apps, then ask what matters today.
       </p>
     </section>
   )

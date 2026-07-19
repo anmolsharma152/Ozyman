@@ -18,3 +18,6 @@ export {
 } from './openai'
 export { runAgentLoop, redactArgs, clampMaxSteps } from './loop'
 export type { RunAgentLoopInput } from './loop'
+export { chatToolsForMode } from './tools'
+export { runChatTurn } from './run-chat'
+export { createAgentPersist } from './persist'

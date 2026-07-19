@@ -375,13 +375,16 @@ async function handleToolCall(
     error = result.error
     resultRef = result.resultRef
   } else {
-    // Structure stub until Composio wiring (PR-05/06)
     summary = `stub: ${slug} (no executeTool wired)`
   }
 
+  // Short UI summary; full preview for the model lives in resultRef
+  const uiSummary =
+    summary.length > 240 ? `${summary.slice(0, 240)}…` : summary
+
   await deps.persist.updateToolRun(toolRun.id, {
     status: ok ? 'succeeded' : 'failed',
-    result_summary: summary,
+    result_summary: uiSummary,
     result_ref: resultRef ?? null,
     error: error ?? null,
     finished_at: nowIso(),
@@ -390,16 +393,20 @@ async function handleToolCall(
     type: 'tool_result',
     toolRunId: toolRun.id,
     status: ok ? 'succeeded' : 'failed',
-    summary,
+    summary: uiSummary,
   })
+
+  const modelPayload =
+    ok && resultRef && typeof resultRef.preview === 'string'
+      ? resultRef.preview
+      : summary
 
   return {
     kind: 'continue',
     toolMessage: JSON.stringify({
       ok,
-      summary,
       ...(error ? { error } : {}),
-      ...(resultRef ? { result_ref: resultRef } : {}),
+      data: modelPayload,
     }),
   }
 }
